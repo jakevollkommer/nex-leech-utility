@@ -330,7 +330,7 @@ public interface NexLeechUtilityConfig extends Config
 	@ConfigItem(
 		keyName = "hidePlayersOnlyInRoom",
 		name = "Only inside Nex room",
-		description = "Only hide players while inside the Nex room (not just during the active fight).",
+		description = "Only hide players while inside the Nex room.",
 		section = playersSection,
 		position = 1
 	)

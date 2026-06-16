@@ -5,21 +5,32 @@ minimum **25 damage** with the least effort, while staying safe.
 
 ## Features
 
-- **Per-kill damage tracker** — an overlay showing your own damage this kill.
-  It turns **green once you reach 25** (the loot-eligibility threshold), red until then.
+- **Per-kill damage tracker** — an overlay showing your own damage and
+  contribution this kill (e.g. `25 (0.5%)`), turning **green once you reach 25**
+  (the loot-eligibility threshold), red until then. Also shows your **drop rate**
+  (1/N from contribution) and the **player count**, and stays visible after the
+  kill so you can read the result.
 - **Minion vulnerability highlighting** — Fumus, Umbra, Cruor and Glacies are
-  outlined: faint **red** while invulnerable, hard **green** the moment they
-  become attackable (driven by Nex's `"<minion>, don't fail me!"` callouts), and
-  reset when the kill ends.
-- **Leech rotation warnings** — pick the **starting minion** you want to attack.
-  When that minion (or any later one, if you still need damage) is about to
-  become vulnerable, a centred warning appears and is dismissed once it's
-  attackable. Optionally **grabs client focus** so you don't miss the hit while
-  tabbed out. Warnings stop automatically once you've reached 25 damage.
+  outlined: faint **red** while invulnerable, hard **green** the instant they
+  become attackable (driven by Nex's `"<minion>, don't fail me!"` callouts),
+  resetting when the kill ends. Colours are configurable.
+- **Starting minion + leech-rotation warnings** — pick the **minion you start
+  on** (e.g. Umbra to skip Fumus). A prominent centred warning announces when
+  that minion — or any later one, if you still need damage — is about to become
+  vulnerable, with a **countdown**, then switches to "ATTACK NOW" when it's live.
+  Warnings stop automatically once you've reached 25 damage.
+- **Focus grab** — optionally bring the client window to the front when the
+  warning fires, so you don't miss the hit while tabbed out.
+- **De-prioritized minion attack** — removes left-click *Attack* on a minion
+  while it's invulnerable (so you can't misclick it); left-click *Attack* returns
+  the moment it becomes attackable.
 - **Optional blood-reaver highlighting** — reavers also count towards your damage.
-- **Low HP / prayer screen flash** — optionally flash the screen with a
-  configurable message (e.g. `EAT!` / `DRINK PRAYER POT`) when HP or prayer drop
-  below configurable thresholds (default 60 HP / 50 prayer).
+- **Low HP / prayer alert** — optionally flash the screen with a configurable
+  message (e.g. `EAT!` / `DRINK PRAYER POT`) when HP or prayer drop below
+  configurable thresholds (default 60 HP / 50 prayer). Stays up until the stat
+  recovers, or for a set number of seconds.
+- **Hide players** — entity-hider style; hide other players while inside the Nex
+  room to cut clutter (your own character is kept).
 
 ## Credits
 
