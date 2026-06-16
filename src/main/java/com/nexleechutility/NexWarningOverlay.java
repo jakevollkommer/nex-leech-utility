@@ -36,15 +36,27 @@ class NexWarningOverlay extends OverlayPanel
 			return null;
 		}
 
-		panelComponent.getChildren().add(TitleComponent.builder()
-			.text("⚠ " + minion.getDisplayName().toUpperCase() + " INCOMING")
-			.color(Color.RED)
-			.build());
+		String name = minion.getDisplayName().toUpperCase();
+		boolean attackable = plugin.isWarningMinionAttackable();
 
-		panelComponent.getChildren().add(LineComponent.builder()
-			.left("Attack when it glows green")
-			.leftColor(Color.YELLOW)
-			.build());
+		if (attackable)
+		{
+			panelComponent.getChildren().add(TitleComponent.builder()
+				.text("⚔ ATTACK " + name + " NOW")
+				.color(Color.GREEN)
+				.build());
+		}
+		else
+		{
+			panelComponent.getChildren().add(TitleComponent.builder()
+				.text("⚠ " + name + " INCOMING")
+				.color(Color.RED)
+				.build());
+			panelComponent.getChildren().add(LineComponent.builder()
+				.left("Get ready - about to be vulnerable")
+				.leftColor(Color.YELLOW)
+				.build());
+		}
 
 		return super.render(graphics);
 	}

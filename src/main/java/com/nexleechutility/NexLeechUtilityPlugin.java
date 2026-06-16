@@ -74,7 +74,7 @@ public class NexLeechUtilityPlugin extends Plugin
 	/** The minion that can currently be attacked (drawn green); null if none. */
 	@Getter private Minion activeMinion;
 
-	@Getter private boolean warningActive;
+	/** The minion the warning overlay is currently alerting about; null if no warning. */
 	@Getter private Minion warningMinion;
 
 	// Low-stat flash state. A flash stays up while the stat is below its threshold;
@@ -115,7 +115,6 @@ public class NexLeechUtilityPlugin extends Plugin
 		overlayManager.remove(screenFlashOverlay);
 		inFight = false;
 		activeMinion = null;
-		warningActive = false;
 		warningMinion = null;
 		hpFlashing = false;
 		prayerFlashing = false;
@@ -131,7 +130,6 @@ public class NexLeechUtilityPlugin extends Plugin
 		playerCount = countPlayers();
 		leechComplete = false;
 		activeMinion = null;
-		warningActive = false;
 		warningMinion = null;
 		npcOverlayService.rebuild();
 	}
@@ -141,7 +139,6 @@ public class NexLeechUtilityPlugin extends Plugin
 		log.debug("Nex fight ended (own={}, total={})", ownDamageThisKill, totalDamageThisKill);
 		inFight = false;
 		activeMinion = null;
-		warningActive = false;
 		warningMinion = null;
 		// Stop any low-stat flash that was scoped to the fight.
 		hpFlashing = false;
@@ -221,14 +218,15 @@ public class NexLeechUtilityPlugin extends Plugin
 	private void onPhaseWarning(Minion minion)
 	{
 		log.debug("Phase warning: {} (target start={})", minion, config.startingMinion());
+		// A new phase begins: the previous minion is no longer attackable.
 		activeMinion = null;
-		npcOverlayService.rebuild();
 
+		// Alert for the minion we intend to leech (the starting minion or any after it),
+		// but only while we still need damage. Otherwise clear any stale warning.
 		if (config.showVulnerabilityWarning()
 			&& !leechComplete
 			&& minion.atOrAfter(config.startingMinion()))
 		{
-			warningActive = true;
 			warningMinion = minion;
 
 			if (config.requestFocusOnWarning())
@@ -243,19 +241,33 @@ public class NexLeechUtilityPlugin extends Plugin
 				}
 			}
 		}
+		else
+		{
+			warningMinion = null;
+		}
+
+		npcOverlayService.rebuild();
 	}
 
 	private void onMinionActivated(Minion minion)
 	{
 		log.debug("Minion attackable: {}", minion);
+		// Keep the warning up (it switches to an "attack now" message) until the phase
+		// passes, we leech enough, or the fight ends - so it stays visible.
 		activeMinion = minion;
 		npcOverlayService.rebuild();
+	}
 
-		if (warningMinion == minion)
-		{
-			warningActive = false;
-			warningMinion = null;
-		}
+	/** @return true while the warning overlay should be shown. */
+	public boolean isWarningActive()
+	{
+		return warningMinion != null;
+	}
+
+	/** @return true once the warned-about minion is attackable (overlay shows "attack now"). */
+	public boolean isWarningMinionAttackable()
+	{
+		return warningMinion != null && warningMinion == activeMinion;
 	}
 
 	@Subscribe
@@ -291,7 +303,6 @@ public class NexLeechUtilityPlugin extends Plugin
 			if (!leechComplete && ownDamageThisKill >= MINIMUM_LEECH_DAMAGE)
 			{
 				leechComplete = true;
-				warningActive = false;
 				warningMinion = null;
 			}
 		}
