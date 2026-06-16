@@ -18,6 +18,12 @@ public interface NexLeechUtilityConfig extends Config
 		FORCE
 	}
 
+	enum CountdownUnit
+	{
+		SECONDS,
+		TICKS
+	}
+
 	@ConfigSection(
 		name = "Damage",
 		description = "Per-kill damage tracking",
@@ -170,13 +176,25 @@ public interface NexLeechUtilityConfig extends Config
 	@ConfigItem(
 		keyName = "showAttackCountdown",
 		name = "Show attack countdown",
-		description = "Show a countdown (in seconds) until your target minion becomes attackable.",
+		description = "Show a countdown until your target minion becomes attackable.",
 		section = warningSection,
 		position = 1
 	)
 	default boolean showAttackCountdown()
 	{
 		return true;
+	}
+
+	@ConfigItem(
+		keyName = "countdownUnit",
+		name = "Countdown unit",
+		description = "Show the countdown in real seconds or game ticks.",
+		section = warningSection,
+		position = 2
+	)
+	default CountdownUnit countdownUnit()
+	{
+		return CountdownUnit.SECONDS;
 	}
 
 	@ConfigItem(

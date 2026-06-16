@@ -82,6 +82,8 @@ public class NexLeechUtilityPlugin extends Plugin
 	@Getter private Minion warningMinion;
 	/** Game tick at which {@link #warningMinion} is expected to become attackable. */
 	private int attackableAtTick;
+	/** Wall-clock time (ms) at which {@link #warningMinion} is expected to become attackable. */
+	private long attackableAtMillis;
 
 	// Low-stat flash state. A flash stays up while the stat is below its threshold;
 	// if a duration is configured it instead expires after that many ticks.
@@ -235,6 +237,7 @@ public class NexLeechUtilityPlugin extends Plugin
 		{
 			warningMinion = minion;
 			attackableAtTick = client.getTickCount() + (int) Math.ceil(minion.getDelaySeconds() / 0.6);
+			attackableAtMillis = System.currentTimeMillis() + (long) (minion.getDelaySeconds() * 1000);
 
 			if (config.requestFocusOnWarning())
 			{
@@ -266,6 +269,7 @@ public class NexLeechUtilityPlugin extends Plugin
 		if (warningMinion == minion)
 		{
 			attackableAtTick = client.getTickCount();
+			attackableAtMillis = System.currentTimeMillis();
 		}
 		npcOverlayService.rebuild();
 	}
@@ -282,11 +286,16 @@ public class NexLeechUtilityPlugin extends Plugin
 		return warningMinion != null && warningMinion == activeMinion;
 	}
 
-	/** @return estimated seconds until the warned-about minion becomes attackable (>= 0). */
+	/** @return estimated real seconds until the warned-about minion becomes attackable (>= 0). */
 	public double getSecondsUntilAttackable()
 	{
-		double seconds = (attackableAtTick - client.getTickCount()) * 0.6;
-		return Math.max(0.0, seconds);
+		return Math.max(0.0, (attackableAtMillis - System.currentTimeMillis()) / 1000.0);
+	}
+
+	/** @return estimated game ticks until the warned-about minion becomes attackable (>= 0). */
+	public int getTicksUntilAttackable()
+	{
+		return Math.max(0, attackableAtTick - client.getTickCount());
 	}
 
 	@Subscribe

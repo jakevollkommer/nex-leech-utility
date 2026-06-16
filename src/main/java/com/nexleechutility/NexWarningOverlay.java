@@ -63,7 +63,9 @@ class NexWarningOverlay extends Overlay
 			drawCentered(graphics, "⚠ " + name + " INCOMING", width, centerY, 40f, Color.RED);
 			if (config.showAttackCountdown())
 			{
-				String sub = String.format("attackable in %.1fs", plugin.getSecondsUntilAttackable());
+				String sub = config.countdownUnit() == NexLeechUtilityConfig.CountdownUnit.TICKS
+					? String.format("attackable in %dt", plugin.getTicksUntilAttackable())
+					: String.format("attackable in %.1fs", plugin.getSecondsUntilAttackable());
 				drawCentered(graphics, sub, width, centerY + 34, 26f, Color.YELLOW);
 			}
 		}
