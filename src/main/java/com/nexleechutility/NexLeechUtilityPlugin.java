@@ -13,9 +13,11 @@ import net.runelite.api.NPC;
 import net.runelite.api.Player;
 import net.runelite.api.Renderable;
 import net.runelite.api.Skill;
+import net.runelite.api.MenuEntry;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.HitsplatApplied;
+import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
@@ -32,6 +34,7 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientUI;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.Text;
 
 @Slf4j
 @PluginDescriptor(
@@ -45,6 +48,8 @@ public class NexLeechUtilityPlugin extends Plugin
 	static final int MINIMUM_LEECH_DAMAGE = 25;
 	/** Nex's per-kill unique roll for 100% contribution (1/43). */
 	private static final double BASE_UNIQUE_ROLL = 43.0;
+	/** Map region id of the Nex arena (Ancient Prison). */
+	private static final int NEX_REGION = 11601;
 
 	public enum FlashType
 	{
@@ -76,6 +81,8 @@ public class NexLeechUtilityPlugin extends Plugin
 
 	/** The minion the warning overlay is currently alerting about; null if no warning. */
 	@Getter private Minion warningMinion;
+	/** Game tick at which {@link #warningMinion} is expected to become attackable. */
+	private int attackableAtTick;
 
 	// Low-stat flash state. A flash stays up while the stat is below its threshold;
 	// if a duration is configured it instead expires after that many ticks.
@@ -228,6 +235,7 @@ public class NexLeechUtilityPlugin extends Plugin
 			&& minion.atOrAfter(config.startingMinion()))
 		{
 			warningMinion = minion;
+			attackableAtTick = client.getTickCount() + (int) Math.ceil(minion.getDelaySeconds() / 0.6);
 
 			if (config.requestFocusOnWarning())
 			{
@@ -268,6 +276,13 @@ public class NexLeechUtilityPlugin extends Plugin
 	public boolean isWarningMinionAttackable()
 	{
 		return warningMinion != null && warningMinion == activeMinion;
+	}
+
+	/** @return estimated seconds until the warned-about minion becomes attackable (>= 0). */
+	public double getSecondsUntilAttackable()
+	{
+		double seconds = (attackableAtTick - client.getTickCount()) * 0.6;
+		return Math.max(0.0, seconds);
 	}
 
 	@Subscribe
@@ -445,13 +460,56 @@ public class NexLeechUtilityPlugin extends Plugin
 			{
 				return true;
 			}
-			if (config.hidePlayersOnlyInFight() && !inFight)
+			if (config.hidePlayersOnlyInRoom() && !isInNexRoom())
 			{
 				return true;
 			}
 			return false;
 		}
 		return true;
+	}
+
+	private boolean isInNexRoom()
+	{
+		int[] regions = client.getMapRegions();
+		if (regions == null)
+		{
+			return false;
+		}
+		for (int region : regions)
+		{
+			if (region == NEX_REGION)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	@Subscribe
+	public void onMenuEntryAdded(MenuEntryAdded event)
+	{
+		if (!config.deprioritizeMinionAttack())
+		{
+			return;
+		}
+
+		MenuEntry entry = event.getMenuEntry();
+		NPC npc = entry.getNpc();
+		if (npc == null)
+		{
+			return;
+		}
+
+		Minion minion = Minion.byNpcId(npc.getId());
+		// De-prioritize "Attack" on a minion until it is the active (attackable) one,
+		// so you don't left-click an invulnerable minion. When green, left-click Attack returns.
+		if (minion != null
+			&& minion != activeMinion
+			&& "Attack".equalsIgnoreCase(Text.removeTags(entry.getOption())))
+		{
+			entry.setDeprioritized(true);
+		}
 	}
 
 	private static Color translucent(Color color)

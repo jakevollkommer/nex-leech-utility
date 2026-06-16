@@ -10,27 +10,37 @@ import net.runelite.api.gameval.NpcID;
  */
 public enum Minion
 {
-	FUMUS("Fumus", NpcID.NEX_SMOKEMAGE, "fill my soul with smoke!", "fumus, don't fail me!"),
-	UMBRA("Umbra", NpcID.NEX_SHADOWMAGE, "darken my shadow!", "umbra, don't fail me!"),
-	CRUOR("Cruor", NpcID.NEX_BLOODMAGE, "flood my lungs with blood!", "cruor, don't fail me!"),
-	GLACIES("Glacies", NpcID.NEX_ICEMAGE, "infuse me with the power of ice!", "glacies, don't fail me!");
+	// delaySeconds = time from the warning line until the minion becomes attackable.
+	// Umbra is confirmed 6s after "Darken my shadow!"; the others use the same estimate
+	// for now and can be tuned (the warning->activation gap in the debug log reveals each).
+	FUMUS("Fumus", NpcID.NEX_SMOKEMAGE, "fill my soul with smoke!", "fumus, don't fail me!", 6.0),
+	UMBRA("Umbra", NpcID.NEX_SHADOWMAGE, "darken my shadow!", "umbra, don't fail me!", 6.0),
+	CRUOR("Cruor", NpcID.NEX_BLOODMAGE, "flood my lungs with blood!", "cruor, don't fail me!", 6.0),
+	GLACIES("Glacies", NpcID.NEX_ICEMAGE, "infuse me with the power of ice!", "glacies, don't fail me!", 6.0);
 
 	private final String displayName;
 	private final int npcId;
 	private final String warningLine;
 	private final String activationLine;
+	private final double delaySeconds;
 
-	Minion(String displayName, int npcId, String warningLine, String activationLine)
+	Minion(String displayName, int npcId, String warningLine, String activationLine, double delaySeconds)
 	{
 		this.displayName = displayName;
 		this.npcId = npcId;
 		this.warningLine = warningLine;
 		this.activationLine = activationLine;
+		this.delaySeconds = delaySeconds;
 	}
 
 	public int getNpcId()
 	{
 		return npcId;
+	}
+
+	public double getDelaySeconds()
+	{
+		return delaySeconds;
 	}
 
 	public String getDisplayName()

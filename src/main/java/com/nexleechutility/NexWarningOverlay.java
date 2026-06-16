@@ -52,10 +52,22 @@ class NexWarningOverlay extends OverlayPanel
 				.text("⚠ " + name + " INCOMING")
 				.color(Color.RED)
 				.build());
-			panelComponent.getChildren().add(LineComponent.builder()
-				.left("Get ready - about to be vulnerable")
-				.leftColor(Color.YELLOW)
-				.build());
+
+			if (config.showAttackCountdown())
+			{
+				panelComponent.getChildren().add(LineComponent.builder()
+					.left("Attackable in:")
+					.right(String.format("%.1fs", plugin.getSecondsUntilAttackable()))
+					.rightColor(Color.YELLOW)
+					.build());
+			}
+			else
+			{
+				panelComponent.getChildren().add(LineComponent.builder()
+					.left("Get ready - about to be vulnerable")
+					.leftColor(Color.YELLOW)
+					.build());
+			}
 		}
 
 		return super.render(graphics);

@@ -92,6 +92,18 @@ public interface NexLeechUtilityConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "deprioritizeMinionAttack",
+		name = "De-prioritize attacking minions",
+		description = "Removes left-click Attack on a minion until it becomes attackable (green), so you don't misclick an invulnerable minion.",
+		section = minionSection,
+		position = 6
+	)
+	default boolean deprioritizeMinionAttack()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "startingMinion",
 		name = "Starting minion",
 		description = "The minion you begin your leech rotation on. Warnings/focus apply to this minion and any after it until you reach 25 damage.",
@@ -151,6 +163,18 @@ public interface NexLeechUtilityConfig extends Config
 		position = 0
 	)
 	default boolean showVulnerabilityWarning()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "showAttackCountdown",
+		name = "Show attack countdown",
+		description = "Show a countdown (in seconds) until your target minion becomes attackable.",
+		section = warningSection,
+		position = 1
+	)
+	default boolean showAttackCountdown()
 	{
 		return true;
 	}
@@ -304,13 +328,13 @@ public interface NexLeechUtilityConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "hidePlayersOnlyInFight",
-		name = "Only during Nex fight",
-		description = "Only hide players while in the Nex fight.",
+		keyName = "hidePlayersOnlyInRoom",
+		name = "Only inside Nex room",
+		description = "Only hide players while inside the Nex room (not just during the active fight).",
 		section = playersSection,
 		position = 1
 	)
-	default boolean hidePlayersOnlyInFight()
+	default boolean hidePlayersOnlyInRoom()
 	{
 		return true;
 	}
