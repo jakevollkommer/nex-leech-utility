@@ -6,19 +6,23 @@ import java.util.function.Function;
 import javax.inject.Inject;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.Hitsplat;
+import net.runelite.api.HitsplatID;
 import net.runelite.api.NPC;
+import net.runelite.api.Player;
+import net.runelite.api.Renderable;
 import net.runelite.api.Skill;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.HitsplatApplied;
+import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.gameval.NpcID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.callback.ClientThread;
+import net.runelite.client.callback.Hooks;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
@@ -39,8 +43,8 @@ public class NexLeechUtilityPlugin extends Plugin
 {
 	/** Minimum damage required to qualify for loot at Nex. */
 	static final int MINIMUM_LEECH_DAMAGE = 25;
-	/** How many game ticks a screen flash stays visible (and fades over). */
-	static final int FLASH_TICKS = 5;
+	/** Nex's per-kill unique roll for 100% contribution (1/43). */
+	private static final double BASE_UNIQUE_ROLL = 43.0;
 
 	public enum FlashType
 	{
@@ -53,13 +57,17 @@ public class NexLeechUtilityPlugin extends Plugin
 	@Inject private OverlayManager overlayManager;
 	@Inject private NpcOverlayService npcOverlayService;
 	@Inject private ClientUI clientUI;
+	@Inject private Hooks hooks;
 	@Inject private NexLeechUtilityConfig config;
 	@Inject private NexLeechOverlay damageOverlay;
 	@Inject private NexWarningOverlay warningOverlay;
 	@Inject private NexLeechScreenFlashOverlay screenFlashOverlay;
 
 	@Getter private boolean inFight;
+	@Getter private boolean everFought;
 	@Getter private int ownDamageThisKill;
+	@Getter private int totalDamageThisKill;
+	@Getter private int playerCount;
 	@Getter private boolean leechComplete;
 	private int lastNexStatus;
 
@@ -69,12 +77,15 @@ public class NexLeechUtilityPlugin extends Plugin
 	@Getter private boolean warningActive;
 	@Getter private Minion warningMinion;
 
-	private int hpFlashTicks;
-	private int prayerFlashTicks;
-	private boolean hpArmed = true;
-	private boolean prayerArmed = true;
+	// Low-stat flash state. A flash stays up while the stat is below its threshold;
+	// if a duration is configured it instead expires after that many ticks.
+	@Getter private boolean hpFlashing;
+	@Getter private boolean prayerFlashing;
+	private int hpFlashTicksLeft;
+	private int prayerFlashTicksLeft;
 
 	private final Function<NPC, HighlightedNpc> highlighter = this::highlight;
+	private final Hooks.RenderableDrawListener drawListener = this::shouldDraw;
 
 	@Override
 	protected void startUp()
@@ -83,8 +94,8 @@ public class NexLeechUtilityPlugin extends Plugin
 		overlayManager.add(warningOverlay);
 		overlayManager.add(screenFlashOverlay);
 		npcOverlayService.registerHighlighter(highlighter);
+		hooks.registerRenderableDrawListener(drawListener);
 
-		// Handle the plugin being enabled mid-fight.
 		clientThread.invokeLater(() ->
 		{
 			if (client.getVarbitValue(VarbitID.NEX_BARRIER) == 3)
@@ -98,6 +109,7 @@ public class NexLeechUtilityPlugin extends Plugin
 	protected void shutDown()
 	{
 		npcOverlayService.unregisterHighlighter(highlighter);
+		hooks.unregisterRenderableDrawListener(drawListener);
 		overlayManager.remove(damageOverlay);
 		overlayManager.remove(warningOverlay);
 		overlayManager.remove(screenFlashOverlay);
@@ -105,29 +117,36 @@ public class NexLeechUtilityPlugin extends Plugin
 		activeMinion = null;
 		warningActive = false;
 		warningMinion = null;
+		hpFlashing = false;
+		prayerFlashing = false;
 	}
 
 	private void startFight()
 	{
+		log.debug("Nex fight starting");
 		inFight = true;
+		everFought = true;
 		ownDamageThisKill = 0;
+		totalDamageThisKill = 0;
+		playerCount = countPlayers();
 		leechComplete = false;
 		activeMinion = null;
 		warningActive = false;
 		warningMinion = null;
-		hpArmed = true;
-		prayerArmed = true;
-		hpFlashTicks = 0;
-		prayerFlashTicks = 0;
 		npcOverlayService.rebuild();
 	}
 
 	private void endFight()
 	{
+		log.debug("Nex fight ended (own={}, total={})", ownDamageThisKill, totalDamageThisKill);
 		inFight = false;
 		activeMinion = null;
 		warningActive = false;
 		warningMinion = null;
+		// Stop any low-stat flash that was scoped to the fight.
+		hpFlashing = false;
+		prayerFlashing = false;
+		// Keep ownDamage/totalDamage/playerCount so the overlay can show the last kill.
 		npcOverlayService.rebuild();
 	}
 
@@ -142,17 +161,14 @@ public class NexLeechUtilityPlugin extends Plugin
 		int status = event.getValue();
 		if (status == 3 && lastNexStatus != 3)
 		{
-			// Barrier raised - fight is live (also fires 0 -> 3 when logging in mid-fight).
 			startFight();
 		}
 		else if (lastNexStatus == 3 && status == 2)
 		{
-			// Nex just died.
 			endFight();
 		}
 		else if ((status == 0 || status == 1) && lastNexStatus != 2)
 		{
-			// Left the arena while Nex was alive, or logged out.
 			endFight();
 		}
 		lastNexStatus = status;
@@ -161,12 +177,17 @@ public class NexLeechUtilityPlugin extends Plugin
 	@Subscribe
 	public void onChatMessage(ChatMessage event)
 	{
-		if (event.getType() != ChatMessageType.GAMEMESSAGE && event.getType() != ChatMessageType.NPC_SAY)
+		String raw = event.getMessage();
+		String lower = raw.toLowerCase();
+		// Diagnostic: surface the exact type/format of Nex's spoken lines.
+		if (log.isDebugEnabled() && (lower.contains("fail me") || lower.contains("my soul")
+			|| lower.contains("my shadow") || lower.contains("my lungs")
+			|| lower.contains("power of ice") || lower.contains("wrath")))
 		{
-			return;
+			log.debug("NEX CHAT type={} raw=[{}]", event.getType(), raw);
 		}
 
-		String message = normalize(event.getMessage());
+		String message = normalize(raw);
 		Minion warning = Minion.byWarningLine(message);
 		Minion activation = Minion.byActivationLine(message);
 		boolean death = message.equals("taste my wrath!");
@@ -182,7 +203,6 @@ public class NexLeechUtilityPlugin extends Plugin
 			return;
 		}
 
-		// A recognised combat line means we're in a fight even if the varbit edge was missed.
 		if (!inFight)
 		{
 			startFight();
@@ -200,12 +220,10 @@ public class NexLeechUtilityPlugin extends Plugin
 
 	private void onPhaseWarning(Minion minion)
 	{
-		// A new phase begins: the previous minion is no longer attackable.
+		log.debug("Phase warning: {} (target start={})", minion, config.startingMinion());
 		activeMinion = null;
 		npcOverlayService.rebuild();
 
-		// Warn only for the minion we intend to leech (the starting minion or any after it)
-		// and only while we still need damage.
 		if (config.showVulnerabilityWarning()
 			&& !leechComplete
 			&& minion.atOrAfter(config.startingMinion()))
@@ -229,14 +247,30 @@ public class NexLeechUtilityPlugin extends Plugin
 
 	private void onMinionActivated(Minion minion)
 	{
+		log.debug("Minion attackable: {}", minion);
 		activeMinion = minion;
 		npcOverlayService.rebuild();
 
-		// The minion we were warned about is now attackable - dismiss the warning.
 		if (warningMinion == minion)
 		{
 			warningActive = false;
 			warningMinion = null;
+		}
+	}
+
+	@Subscribe
+	public void onNpcSpawned(NpcSpawned event)
+	{
+		if (!log.isDebugEnabled())
+		{
+			return;
+		}
+		NPC npc = event.getNpc();
+		int id = npc.getId();
+		// Nex-arena NPC id range, for confirming minion / blood-reaver ids in the wild.
+		if (id >= 11276 && id <= 11296)
+		{
+			log.debug("Nex-arena NPC spawned: id={} name={}", id, npc.getName());
 		}
 	}
 
@@ -249,20 +283,22 @@ public class NexLeechUtilityPlugin extends Plugin
 		}
 
 		Hitsplat hitsplat = event.getHitsplat();
-		if (!hitsplat.isMine())
+		if (hitsplat.isMine())
 		{
-			return;
+			// Damage to Nex and her minions all counts towards loot eligibility.
+			ownDamageThisKill += hitsplat.getAmount();
+
+			if (!leechComplete && ownDamageThisKill >= MINIMUM_LEECH_DAMAGE)
+			{
+				leechComplete = true;
+				warningActive = false;
+				warningMinion = null;
+			}
 		}
 
-		// Damage to Nex and her minions all counts towards loot eligibility.
-		ownDamageThisKill += hitsplat.getAmount();
-
-		if (!leechComplete && ownDamageThisKill >= MINIMUM_LEECH_DAMAGE)
+		if (hitsplat.getHitsplatType() != HitsplatID.HEAL)
 		{
-			leechComplete = true;
-			// We've leeched enough - no need to keep warning for the rest of the rotation.
-			warningActive = false;
-			warningMinion = null;
+			totalDamageThisKill += hitsplat.getAmount();
 		}
 	}
 
@@ -274,32 +310,28 @@ public class NexLeechUtilityPlugin extends Plugin
 
 		if (skill == Skill.HITPOINTS)
 		{
-			if (current <= config.lowHpThreshold())
+			if (current > config.lowHpThreshold())
 			{
-				if (hpArmed && shouldFlash())
-				{
-					hpFlashTicks = FLASH_TICKS;
-					hpArmed = false;
-				}
+				hpFlashing = false;
+				hpFlashTicksLeft = 0;
 			}
-			else
+			else if (shouldFlash() && !hpFlashing)
 			{
-				hpArmed = true;
+				hpFlashing = true;
+				hpFlashTicksLeft = flashDurationTicks();
 			}
 		}
 		else if (skill == Skill.PRAYER)
 		{
-			if (current <= config.lowPrayerThreshold())
+			if (current > config.lowPrayerThreshold())
 			{
-				if (prayerArmed && shouldFlash())
-				{
-					prayerFlashTicks = FLASH_TICKS;
-					prayerArmed = false;
-				}
+				prayerFlashing = false;
+				prayerFlashTicksLeft = 0;
 			}
-			else
+			else if (shouldFlash() && !prayerFlashing)
 			{
-				prayerArmed = true;
+				prayerFlashing = true;
+				prayerFlashTicksLeft = flashDurationTicks();
 			}
 		}
 	}
@@ -307,13 +339,19 @@ public class NexLeechUtilityPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick tick)
 	{
-		if (hpFlashTicks > 0)
+		if (inFight)
 		{
-			hpFlashTicks--;
+			playerCount = countPlayers();
 		}
-		if (prayerFlashTicks > 0)
+
+		// A configured duration (> 0) auto-expires the flash; duration 0 means "until recovered".
+		if (hpFlashing && hpFlashTicksLeft > 0 && --hpFlashTicksLeft == 0)
 		{
-			prayerFlashTicks--;
+			hpFlashing = false;
+		}
+		if (prayerFlashing && prayerFlashTicksLeft > 0 && --prayerFlashTicksLeft == 0)
+		{
+			prayerFlashing = false;
 		}
 	}
 
@@ -329,6 +367,18 @@ public class NexLeechUtilityPlugin extends Plugin
 	private boolean shouldFlash()
 	{
 		return config.flashOnLowStats() && (!config.flashOnlyInFight() || inFight);
+	}
+
+	private int flashDurationTicks()
+	{
+		int seconds = config.flashDurationSeconds();
+		// 0 => stay until the stat recovers (no auto-expiry).
+		return seconds <= 0 ? 0 : (int) Math.ceil(seconds / 0.6);
+	}
+
+	private int countPlayers()
+	{
+		return (int) client.getTopLevelWorldView().players().stream().count();
 	}
 
 	private HighlightedNpc highlight(NPC npc)
@@ -375,30 +425,66 @@ public class NexLeechUtilityPlugin extends Plugin
 		return null;
 	}
 
+	private boolean shouldDraw(Renderable renderable, boolean drawingUi)
+	{
+		if (config.hidePlayers() && renderable instanceof Player)
+		{
+			Player player = (Player) renderable;
+			if (player == client.getLocalPlayer())
+			{
+				return true;
+			}
+			if (config.hidePlayersOnlyInFight() && !inFight)
+			{
+				return true;
+			}
+			return false;
+		}
+		return true;
+	}
+
 	private static Color translucent(Color color)
 	{
 		return new Color(color.getRed(), color.getGreen(), color.getBlue(), Math.min(color.getAlpha(), 50));
 	}
 
-	/** @return the flash that should currently be drawn, or null. HP takes priority over prayer. */
+	/** @return the flash to draw, or null. HP takes priority over prayer. */
 	public FlashType getActiveFlash()
 	{
-		if (hpFlashTicks > 0)
+		if (!config.flashOnLowStats())
+		{
+			return null;
+		}
+		if (hpFlashing)
 		{
 			return FlashType.HP;
 		}
-		if (prayerFlashTicks > 0)
+		if (prayerFlashing)
 		{
 			return FlashType.PRAYER;
 		}
 		return null;
 	}
 
-	/** @return 0..1 fade factor for the active flash (1 = just triggered). */
-	public float getFlashAlphaFraction(FlashType type)
+	/** Contribution as a percentage of total fight damage, 0 if unknown. */
+	public double getContributionPercent()
 	{
-		int ticks = type == FlashType.HP ? hpFlashTicks : prayerFlashTicks;
-		return Math.max(0f, Math.min(1f, ticks / (float) FLASH_TICKS));
+		if (ownDamageThisKill <= 0 || totalDamageThisKill <= 0)
+		{
+			return 0;
+		}
+		return (double) ownDamageThisKill / totalDamageThisKill * 100.0;
+	}
+
+	/** Your personal unique-roll denominator (1/N) for this kill, 0 if unknown. */
+	public int getUniqueChanceRoll()
+	{
+		double contribution = getContributionPercent();
+		if (contribution <= 0)
+		{
+			return 0;
+		}
+		return (int) Math.ceil(BASE_UNIQUE_ROLL * (100.0 / contribution));
 	}
 
 	/**

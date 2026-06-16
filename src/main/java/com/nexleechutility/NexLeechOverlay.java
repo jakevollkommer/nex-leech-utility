@@ -25,13 +25,22 @@ class NexLeechOverlay extends OverlayPanel
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
-		if (!config.showDamageOverlay() || !plugin.isInFight())
+		// Keep showing the last kill's stats after the fight ends.
+		if (!config.showDamageOverlay() || (!plugin.isInFight() && !plugin.isEverFought()))
 		{
 			return null;
 		}
 
 		int damage = plugin.getOwnDamageThisKill();
 		boolean qualified = damage >= NexLeechUtilityPlugin.MINIMUM_LEECH_DAMAGE;
+		double contribution = plugin.getContributionPercent();
+
+		// e.g. "25 (0.5%)" or "25 (0.5%) ✓"
+		String damageText = String.format("%d (%.1f%%)", damage, contribution);
+		if (qualified)
+		{
+			damageText += " ✓";
+		}
 
 		panelComponent.getChildren().add(TitleComponent.builder()
 			.text("Nex Leech")
@@ -40,10 +49,25 @@ class NexLeechOverlay extends OverlayPanel
 
 		panelComponent.getChildren().add(LineComponent.builder()
 			.left("Damage:")
-			.right(qualified ? damage + " ✓" : String.valueOf(damage))
+			.right(damageText)
 			.rightColor(qualified ? Color.GREEN : Color.RED)
 			.build());
 
+		panelComponent.getChildren().add(LineComponent.builder()
+			.left("Drop Rate:")
+			.right(fraction(plugin.getUniqueChanceRoll()))
+			.build());
+
+		panelComponent.getChildren().add(LineComponent.builder()
+			.left("Players:")
+			.right(String.valueOf(plugin.getPlayerCount()))
+			.build());
+
 		return super.render(graphics);
+	}
+
+	private static String fraction(int value)
+	{
+		return value <= 0 ? "N/A" : "1/" + value;
 	}
 }

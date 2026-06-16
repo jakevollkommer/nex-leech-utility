@@ -46,6 +46,13 @@ public interface NexLeechUtilityConfig extends Config
 	)
 	String statsSection = "stats";
 
+	@ConfigSection(
+		name = "Hide players",
+		description = "Hide other players' models during the fight",
+		position = 4
+	)
+	String playersSection = "players";
+
 	// ===== Damage =====
 	@ConfigItem(
 		keyName = "showDamageOverlay",
@@ -269,5 +276,42 @@ public interface NexLeechUtilityConfig extends Config
 	default Color lowPrayerFlashColor()
 	{
 		return new Color(0, 200, 255, 90);
+	}
+
+	@ConfigItem(
+		keyName = "flashDurationSeconds",
+		name = "Flash duration (seconds)",
+		description = "How long a flash stays on screen. 0 = stay until HP/prayer recovers above the threshold.",
+		section = statsSection,
+		position = 8
+	)
+	default int flashDurationSeconds()
+	{
+		return 0;
+	}
+
+	// ===== Hide players =====
+	@ConfigItem(
+		keyName = "hidePlayers",
+		name = "Hide other players",
+		description = "Hide other players' models (like Entity Hider). Your own character is kept.",
+		section = playersSection,
+		position = 0
+	)
+	default boolean hidePlayers()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "hidePlayersOnlyInFight",
+		name = "Only during Nex fight",
+		description = "Only hide players while in the Nex fight.",
+		section = playersSection,
+		position = 1
+	)
+	default boolean hidePlayersOnlyInFight()
+	{
+		return true;
 	}
 }
