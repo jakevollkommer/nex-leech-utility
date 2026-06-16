@@ -35,12 +35,8 @@ class NexLeechOverlay extends OverlayPanel
 		boolean qualified = damage >= NexLeechUtilityPlugin.MINIMUM_LEECH_DAMAGE;
 		double contribution = plugin.getContributionPercent();
 
-		// e.g. "25 (0.5%)" or "25 (0.5%) ✓"
+		// e.g. "25 (0.5%)" - green once qualified, red until then.
 		String damageText = String.format("%d (%.1f%%)", damage, contribution);
-		if (qualified)
-		{
-			damageText += " ✓";
-		}
 
 		panelComponent.getChildren().add(TitleComponent.builder()
 			.text("Nex Leech")

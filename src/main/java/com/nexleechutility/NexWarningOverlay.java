@@ -56,11 +56,11 @@ class NexWarningOverlay extends Overlay
 
 		if (attackable)
 		{
-			drawCentered(graphics, "⚔ ATTACK " + name + " NOW", width, centerY, 40f, Color.GREEN);
+			drawCentered(graphics, "ATTACK " + name + " NOW", width, centerY, 40f, Color.GREEN);
 		}
 		else
 		{
-			drawCentered(graphics, "⚠ " + name + " INCOMING", width, centerY, 40f, Color.RED);
+			drawCentered(graphics, name + " INCOMING", width, centerY, 40f, Color.RED);
 			if (config.showAttackCountdown())
 			{
 				String sub = config.countdownUnit() == NexLeechUtilityConfig.CountdownUnit.TICKS
