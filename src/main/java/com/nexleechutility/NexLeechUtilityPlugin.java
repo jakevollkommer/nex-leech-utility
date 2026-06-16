@@ -18,7 +18,6 @@ import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.HitsplatApplied;
 import net.runelite.api.events.MenuEntryAdded;
-import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.gameval.NpcID;
@@ -288,22 +287,6 @@ public class NexLeechUtilityPlugin extends Plugin
 	{
 		double seconds = (attackableAtTick - client.getTickCount()) * 0.6;
 		return Math.max(0.0, seconds);
-	}
-
-	@Subscribe
-	public void onNpcSpawned(NpcSpawned event)
-	{
-		if (!log.isDebugEnabled())
-		{
-			return;
-		}
-		NPC npc = event.getNpc();
-		int id = npc.getId();
-		// Nex-arena NPC id range, for confirming minion / blood-reaver ids in the wild.
-		if (id >= 11276 && id <= 11296)
-		{
-			log.debug("Nex-arena NPC spawned: id={} name={}", id, npc.getName());
-		}
 	}
 
 	@Subscribe
