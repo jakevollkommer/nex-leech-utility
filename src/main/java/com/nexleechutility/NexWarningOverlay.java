@@ -2,24 +2,34 @@ package com.nexleechutility;
 
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import javax.inject.Inject;
-import net.runelite.client.ui.overlay.OverlayPanel;
+import net.runelite.api.Client;
+import net.runelite.client.ui.overlay.Overlay;
+import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
-import net.runelite.client.ui.overlay.components.LineComponent;
-import net.runelite.client.ui.overlay.components.TitleComponent;
 
-class NexWarningOverlay extends OverlayPanel
+/**
+ * Prominent centred warning, drawn in the upper-middle of the screen so it sits clear of the
+ * Nex health bar (which occupies top-centre). Shows "&lt;MINION&gt; INCOMING" with a countdown,
+ * then "ATTACK &lt;MINION&gt; NOW" once it becomes attackable.
+ */
+class NexWarningOverlay extends Overlay
 {
+	private final Client client;
 	private final NexLeechUtilityPlugin plugin;
 	private final NexLeechUtilityConfig config;
 
 	@Inject
-	NexWarningOverlay(NexLeechUtilityPlugin plugin, NexLeechUtilityConfig config)
+	NexWarningOverlay(Client client, NexLeechUtilityPlugin plugin, NexLeechUtilityConfig config)
 	{
+		this.client = client;
 		this.plugin = plugin;
 		this.config = config;
-		setPosition(OverlayPosition.TOP_CENTER);
+		setPosition(OverlayPosition.DYNAMIC);
+		setLayer(OverlayLayer.ABOVE_WIDGETS);
 	}
 
 	@Override
@@ -39,37 +49,37 @@ class NexWarningOverlay extends OverlayPanel
 		String name = minion.getDisplayName().toUpperCase();
 		boolean attackable = plugin.isWarningMinionAttackable();
 
+		int width = client.getCanvasWidth();
+		int height = client.getCanvasHeight();
+		// Upper-middle, below the Nex health bar.
+		int centerY = (int) (height * 0.22);
+
 		if (attackable)
 		{
-			panelComponent.getChildren().add(TitleComponent.builder()
-				.text("⚔ ATTACK " + name + " NOW")
-				.color(Color.GREEN)
-				.build());
+			drawCentered(graphics, "⚔ ATTACK " + name + " NOW", width, centerY, 40f, Color.GREEN);
 		}
 		else
 		{
-			panelComponent.getChildren().add(TitleComponent.builder()
-				.text("⚠ " + name + " INCOMING")
-				.color(Color.RED)
-				.build());
-
+			drawCentered(graphics, "⚠ " + name + " INCOMING", width, centerY, 40f, Color.RED);
 			if (config.showAttackCountdown())
 			{
-				panelComponent.getChildren().add(LineComponent.builder()
-					.left("Attackable in:")
-					.right(String.format("%.1fs", plugin.getSecondsUntilAttackable()))
-					.rightColor(Color.YELLOW)
-					.build());
-			}
-			else
-			{
-				panelComponent.getChildren().add(LineComponent.builder()
-					.left("Get ready - about to be vulnerable")
-					.leftColor(Color.YELLOW)
-					.build());
+				String sub = String.format("attackable in %.1fs", plugin.getSecondsUntilAttackable());
+				drawCentered(graphics, sub, width, centerY + 34, 26f, Color.YELLOW);
 			}
 		}
 
-		return super.render(graphics);
+		return null;
+	}
+
+	private static void drawCentered(Graphics2D graphics, String text, int width, int y, float size, Color color)
+	{
+		graphics.setFont(graphics.getFont().deriveFont(Font.BOLD, size));
+		FontMetrics metrics = graphics.getFontMetrics();
+		int x = (width - metrics.stringWidth(text)) / 2;
+
+		graphics.setColor(Color.BLACK);
+		graphics.drawString(text, x + 2, y + 2);
+		graphics.setColor(color);
+		graphics.drawString(text, x, y);
 	}
 }
