@@ -263,6 +263,11 @@ public class NexLeechUtilityPlugin extends Plugin
 		// Keep the warning up (it switches to an "attack now" message) until the phase
 		// passes, we leech enough, or the fight ends - so it stays visible.
 		activeMinion = minion;
+		// The minion is vulnerable now - clear the countdown entirely.
+		if (warningMinion == minion)
+		{
+			attackableAtTick = client.getTickCount();
+		}
 		npcOverlayService.rebuild();
 	}
 
