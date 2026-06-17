@@ -202,7 +202,7 @@ public interface NexLeechUtilityConfig extends Config
 		name = "Grab focus on warning",
 		description = "Bring the client window to the front when the warning fires.",
 		section = warningSection,
-		position = 1
+		position = 3
 	)
 	default boolean requestFocusOnWarning()
 	{
@@ -210,11 +210,23 @@ public interface NexLeechUtilityConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "focusOnKillEnd",
+		name = "Grab focus on kill end",
+		description = "Bring the client window to the front when Nex dies and loot drops, so you can grab it.",
+		section = warningSection,
+		position = 4
+	)
+	default boolean focusOnKillEnd()
+	{
+		return false;
+	}
+
+	@ConfigItem(
 		keyName = "focusMode",
 		name = "Focus mode",
-		description = "REQUEST politely asks for attention (dock bounce); FORCE raises the window.",
+		description = "Applies to both focus grabs. REQUEST politely asks for attention (dock bounce); FORCE raises the window.",
 		section = warningSection,
-		position = 2
+		position = 5
 	)
 	default FocusMode focusMode()
 	{

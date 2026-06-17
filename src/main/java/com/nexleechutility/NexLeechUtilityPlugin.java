@@ -170,6 +170,11 @@ public class NexLeechUtilityPlugin extends Plugin
 		}
 		else if (lastNexStatus == 3 && status == 2)
 		{
+			// Nex died and loot drops - optionally bring the client forward to grab it.
+			if (config.focusOnKillEnd())
+			{
+				grabFocus();
+			}
 			endFight();
 		}
 		else if ((status == 0 || status == 1) && lastNexStatus != 2)
@@ -241,14 +246,7 @@ public class NexLeechUtilityPlugin extends Plugin
 
 			if (config.requestFocusOnWarning())
 			{
-				if (config.focusMode() == NexLeechUtilityConfig.FocusMode.FORCE)
-				{
-					clientUI.forceFocus();
-				}
-				else
-				{
-					clientUI.requestFocus();
-				}
+				grabFocus();
 			}
 		}
 		else
@@ -384,6 +382,18 @@ public class NexLeechUtilityPlugin extends Plugin
 		if (NexLeechUtilityConfig.GROUP.equals(event.getGroup()))
 		{
 			npcOverlayService.rebuild();
+		}
+	}
+
+	private void grabFocus()
+	{
+		if (config.focusMode() == NexLeechUtilityConfig.FocusMode.FORCE)
+		{
+			clientUI.forceFocus();
+		}
+		else
+		{
+			clientUI.requestFocus();
 		}
 	}
 

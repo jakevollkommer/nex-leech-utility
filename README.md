@@ -20,7 +20,8 @@ minimum **25 damage** with the least effort, while staying safe.
   vulnerable, with a **countdown**, then switches to "ATTACK NOW" when it's live.
   Warnings stop automatically once you've reached 25 damage.
 - **Focus grab** — optionally bring the client window to the front when the
-  warning fires, so you don't miss the hit while tabbed out.
+  warning fires (so you don't miss the hit while tabbed out) and/or when the kill
+  ends and loot drops (so you can grab it). Request or force focus.
 - **De-prioritized minion attack** — removes left-click *Attack* on a minion
   while it's invulnerable (so you can't misclick it); left-click *Attack* returns
   the moment it becomes attackable.
@@ -29,8 +30,9 @@ minimum **25 damage** with the least effort, while staying safe.
   message (e.g. `EAT!` / `DRINK PRAYER POT`) when HP or prayer drop below
   configurable thresholds (default 60 HP / 50 prayer). Stays up until the stat
   recovers, or for a set number of seconds.
-- **Hide players** — entity-hider style; hide other players while inside the Nex
-  room to cut clutter (your own character is kept).
+- **Hide players / thralls** — entity-hider style; hide other players and/or
+  reanimated thralls while inside the Nex room to cut clutter (your own character
+  is kept).
 
 ## Demo
 
