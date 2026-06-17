@@ -10,15 +10,16 @@ import net.runelite.api.gameval.NpcID;
  */
 public enum Minion
 {
-	// delaySeconds = estimated time from the warning line until the minion becomes attackable.
-	// Tuned from ~21 logged kills (mean warning->activation gap): Fumus ~5.6s, Umbra ~5.8s,
-	// Cruor ~12.8s (blood phase runs much longer), Glacies ~5.8s with a tail to ~7.8s.
-	// Slightly over-estimating is safe: the "<minion>, don't fail me!" chat line truncates
-	// the countdown the instant it's actually vulnerable.
-	FUMUS("Fumus", NpcID.NEX_SMOKEMAGE, "fill my soul with smoke!", "fumus, don't fail me!", 6.0),
-	UMBRA("Umbra", NpcID.NEX_SHADOWMAGE, "darken my shadow!", "umbra, don't fail me!", 6.0),
-	CRUOR("Cruor", NpcID.NEX_BLOODMAGE, "flood my lungs with blood!", "cruor, don't fail me!", 13.0),
-	GLACIES("Glacies", NpcID.NEX_ICEMAGE, "infuse me with the power of ice!", "glacies, don't fail me!", 7.0);
+	// delaySeconds = the EARLIEST time from the warning line until the minion can become
+	// attackable, so the countdown reaches 0 at the soonest it could be vulnerable - you're
+	// ready in time and can never miss the window. If it's not live yet the overlay just shows
+	// "any moment"; the "<minion>, don't fail me!" chat line flips it to "ATTACK NOW" at the
+	// real moment. Earliest gaps over ~21 logged kills (rounded down for safety): Fumus ~5.3s,
+	// Umbra ~3.6s, Cruor ~4.8s, Glacies ~3.6s. (Blood phase / Cruor varies up to ~18s.)
+	FUMUS("Fumus", NpcID.NEX_SMOKEMAGE, "fill my soul with smoke!", "fumus, don't fail me!", 5.0),
+	UMBRA("Umbra", NpcID.NEX_SHADOWMAGE, "darken my shadow!", "umbra, don't fail me!", 3.5),
+	CRUOR("Cruor", NpcID.NEX_BLOODMAGE, "flood my lungs with blood!", "cruor, don't fail me!", 4.5),
+	GLACIES("Glacies", NpcID.NEX_ICEMAGE, "infuse me with the power of ice!", "glacies, don't fail me!", 3.5);
 
 	private final String displayName;
 	private final int npcId;
