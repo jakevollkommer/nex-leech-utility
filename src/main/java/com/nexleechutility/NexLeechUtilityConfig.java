@@ -53,8 +53,8 @@ public interface NexLeechUtilityConfig extends Config
 	String statsSection = "stats";
 
 	@ConfigSection(
-		name = "Hide players",
-		description = "Hide other players' models during the fight",
+		name = "Hide entities",
+		description = "Hide other players and/or thralls inside the Nex room",
 		position = 4
 	)
 	String playersSection = "players";
@@ -346,11 +346,23 @@ public interface NexLeechUtilityConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "hidePlayersOnlyInRoom",
-		name = "Only inside Nex room",
-		description = "Only hide players while inside the Nex room.",
+		keyName = "hideThralls",
+		name = "Hide thralls",
+		description = "Hide reanimated thralls to cut clutter (hides all thralls in the room).",
 		section = playersSection,
 		position = 1
+	)
+	default boolean hideThralls()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "hidePlayersOnlyInRoom",
+		name = "Only inside Nex room",
+		description = "Only hide players/thralls while inside the Nex room.",
+		section = playersSection,
+		position = 2
 	)
 	default boolean hidePlayersOnlyInRoom()
 	{

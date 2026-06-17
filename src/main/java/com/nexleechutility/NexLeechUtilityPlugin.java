@@ -450,19 +450,30 @@ public class NexLeechUtilityPlugin extends Plugin
 
 	private boolean shouldDraw(Renderable renderable, boolean drawingUi)
 	{
+		// Shared "only inside the Nex room" gate for player/thrall hiding.
+		boolean roomOk = !config.hidePlayersOnlyInRoom() || isInNexRoom();
+
 		if (config.hidePlayers() && renderable instanceof Player)
 		{
 			Player player = (Player) renderable;
-			if (player == client.getLocalPlayer())
-			{
-				return true;
-			}
-			if (config.hidePlayersOnlyInRoom() && !isInNexRoom())
+			if (player == client.getLocalPlayer() || !roomOk)
 			{
 				return true;
 			}
 			return false;
 		}
+
+		if (config.hideThralls() && roomOk && renderable instanceof NPC)
+		{
+			String name = ((NPC) renderable).getName();
+			// Matches Skeleton/Ghostly/Zombified thralls (lesser/superior/greater) by name,
+			// so Nex, her minions and blood reavers are never affected.
+			if (name != null && name.toLowerCase().contains("thrall"))
+			{
+				return false;
+			}
+		}
+
 		return true;
 	}
 
