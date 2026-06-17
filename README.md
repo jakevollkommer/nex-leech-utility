@@ -42,7 +42,7 @@ minimum **25 damage** with the least effort, while staying safe.
 
 | Low HP alert | Low prayer alert |
 | --- | --- |
-| ![Eat food warning](docs/eat-warning.png) | ![Drink prayer pot warning](docs/prayer-warning.png) |
+| ![Eat food warning](docs/eat.png) | ![Drink prayer pot warning](docs/prayer.png) |
 
 ## Credits
 
