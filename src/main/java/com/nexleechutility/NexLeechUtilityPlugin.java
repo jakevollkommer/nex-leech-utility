@@ -506,10 +506,10 @@ public class NexLeechUtilityPlugin extends Plugin
 
 		if (config.hideThralls() && roomOk && renderable instanceof NPC)
 		{
-			String name = ((NPC) renderable).getName();
-			// Matches Skeleton/Ghostly/Zombified thralls (lesser/superior/greater) by name,
-			// so Nex, her minions and blood reavers are never affected.
-			if (name != null && name.toLowerCase().contains("thrall"))
+			int id = ((NPC) renderable).getId();
+			// Arceuus resurrection thralls (ghost/skeleton/zombie, lesser/superior/greater)
+			// are a contiguous id range; their display names don't contain "thrall".
+			if (id >= NpcID.ARCEUUS_THRALL_GHOST_LESSER && id <= NpcID.ARCEUUS_THRALL_ZOMBIE_GREATER)
 			{
 				return false;
 			}
