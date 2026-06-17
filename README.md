@@ -32,6 +32,16 @@ minimum **25 damage** with the least effort, while staying safe.
 - **Hide players** — entity-hider style; hide other players while inside the Nex
   room to cut clutter (your own character is kept).
 
+## Demo
+
+![Nex Leech Utility demo](docs/demo.gif)
+
+## Screenshots
+
+| Low HP alert | Low prayer alert |
+| --- | --- |
+| ![Eat food warning](docs/eat-warning.png) | ![Drink prayer pot warning](docs/prayer-warning.png) |
+
 ## Credits
 
 - Nex fight detection and per-kill damage tracking adapted from the

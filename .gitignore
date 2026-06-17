@@ -5,3 +5,8 @@ target/
 .idea/
 .DS_Store
 out/
+
+# Raw capture originals (optimized copies are committed under docs/)
+CleanShot*
+*.mp4
+*.mov
