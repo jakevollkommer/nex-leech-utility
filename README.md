@@ -17,11 +17,13 @@ minimum **25 damage** with the least effort, while staying safe.
 - **Starting minion + leech-rotation warnings** — pick the **minion you start
   on** (e.g. Umbra to skip Fumus). A prominent centred warning announces when
   that minion — or any later one, if you still need damage — is about to become
-  vulnerable, with a **countdown**, then switches to "ATTACK NOW" when it's live.
-  Warnings stop automatically once you've reached 25 damage.
-- **Focus grab** — optionally bring the client window to the front when the
-  warning fires (so you don't miss the hit while tabbed out) and/or when the kill
-  ends and loot drops (so you can grab it). Request or force focus.
+  vulnerable, with a **countdown** (in seconds or game ticks), then switches to
+  "ATTACK NOW" when it's live. Warnings stop automatically once you've reached 25
+  damage.
+- **Focus grab** — optionally bring the client window to the front a configurable
+  number of seconds before your target minion becomes attackable (default 2, so
+  you don't miss the hit while tabbed out) and/or when the kill ends and loot
+  drops (so you can grab it). Request or force focus.
 - **De-prioritized minion attack** — removes left-click *Attack* on a minion
   while it's invulnerable (so you can't misclick it); left-click *Attack* returns
   the moment it becomes attackable.
