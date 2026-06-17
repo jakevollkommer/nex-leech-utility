@@ -7,6 +7,7 @@ import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import javax.inject.Inject;
 import net.runelite.api.Client;
+import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
@@ -18,6 +19,9 @@ import net.runelite.client.ui.overlay.OverlayPosition;
  */
 class NexWarningOverlay extends Overlay
 {
+	private static final Font TITLE_FONT = FontManager.getRunescapeBoldFont().deriveFont(40f);
+	private static final Font SUB_FONT = FontManager.getRunescapeBoldFont().deriveFont(26f);
+
 	private final Client client;
 	private final NexLeechUtilityPlugin plugin;
 	private final NexLeechUtilityConfig config;
@@ -56,11 +60,11 @@ class NexWarningOverlay extends Overlay
 
 		if (attackable)
 		{
-			drawCentered(graphics, "ATTACK " + name + " NOW", width, centerY, 40f, Color.GREEN);
+			drawCentered(graphics, "ATTACK " + name + " NOW", width, centerY, TITLE_FONT, Color.GREEN);
 		}
 		else
 		{
-			drawCentered(graphics, name + " INCOMING", width, centerY, 40f, Color.RED);
+			drawCentered(graphics, name + " INCOMING", width, centerY, TITLE_FONT, Color.RED);
 			if (config.showAttackCountdown())
 			{
 				boolean ticks = config.countdownUnit() == NexLeechUtilityConfig.CountdownUnit.TICKS;
@@ -79,16 +83,16 @@ class NexWarningOverlay extends Overlay
 						? String.format("attackable in %dt", ticksLeft)
 						: String.format("attackable in %.1fs", secsLeft);
 				}
-				drawCentered(graphics, sub, width, centerY + 34, 26f, Color.YELLOW);
+				drawCentered(graphics, sub, width, centerY + 34, SUB_FONT, Color.YELLOW);
 			}
 		}
 
 		return null;
 	}
 
-	private static void drawCentered(Graphics2D graphics, String text, int width, int y, float size, Color color)
+	private static void drawCentered(Graphics2D graphics, String text, int width, int y, Font font, Color color)
 	{
-		graphics.setFont(graphics.getFont().deriveFont(Font.BOLD, size));
+		graphics.setFont(font);
 		FontMetrics metrics = graphics.getFontMetrics();
 		int x = (width - metrics.stringWidth(text)) / 2;
 

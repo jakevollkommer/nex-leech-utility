@@ -3,9 +3,11 @@ package com.nexleechutility;
 import com.google.inject.Provides;
 import java.awt.Color;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import javax.inject.Inject;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.Hitsplat;
 import net.runelite.api.HitsplatID;
@@ -98,12 +100,19 @@ public class NexLeechUtilityPlugin extends Plugin
 	/** Cached once per tick so the per-frame draw listener doesn't recompute it. */
 	private boolean inNexRoom;
 
+	// Hide-config snapshot, refreshed on config change, so the per-entity-per-frame
+	// draw listener does plain field reads instead of config-proxy lookups.
+	private boolean cfgHidePlayers;
+	private boolean cfgHideThralls;
+	private boolean cfgHideOnlyInRoom;
+
 	private final Function<NPC, HighlightedNpc> highlighter = this::highlight;
 	private final Hooks.RenderableDrawListener drawListener = this::shouldDraw;
 
 	@Override
 	protected void startUp()
 	{
+		refreshHideConfig();
 		overlayManager.add(damageOverlay);
 		overlayManager.add(warningOverlay);
 		overlayManager.add(screenFlashOverlay);
@@ -196,17 +205,15 @@ public class NexLeechUtilityPlugin extends Plugin
 	@Subscribe
 	public void onChatMessage(ChatMessage event)
 	{
-		String raw = event.getMessage();
-		String lower = raw.toLowerCase();
-		// Diagnostic: surface the exact type/format of Nex's spoken lines.
-		if (log.isDebugEnabled() && (lower.contains("fail me") || lower.contains("my soul")
-			|| lower.contains("my shadow") || lower.contains("my lungs")
-			|| lower.contains("power of ice") || lower.contains("wrath")))
+		// Nex's callouts arrive as NPC overhead speech (NPC_SAY); a couple as game messages.
+		// Filtering by type first skips the bulk of chat (public/clan/private/spam) cheaply.
+		ChatMessageType type = event.getType();
+		if (type != ChatMessageType.NPC_SAY && type != ChatMessageType.GAMEMESSAGE)
 		{
-			log.debug("NEX CHAT type={} raw=[{}]", event.getType(), raw);
+			return;
 		}
 
-		String message = normalize(raw);
+		String message = normalize(event.getMessage());
 		Minion warning = Minion.byWarningLine(message);
 		Minion activation = Minion.byActivationLine(message);
 		boolean death = message.equals("taste my wrath!");
@@ -215,6 +222,8 @@ public class NexLeechUtilityPlugin extends Plugin
 		{
 			return;
 		}
+
+		log.debug("NEX CHAT type={} raw=[{}]", type, event.getMessage());
 
 		if (death)
 		{
@@ -418,6 +427,7 @@ public class NexLeechUtilityPlugin extends Plugin
 	{
 		if (NexLeechUtilityConfig.GROUP.equals(event.getGroup()))
 		{
+			refreshHideConfig();
 			npcOverlayService.rebuild();
 		}
 	}
@@ -501,7 +511,7 @@ public class NexLeechUtilityPlugin extends Plugin
 	{
 		if (renderable instanceof Player)
 		{
-			if (!config.hidePlayers())
+			if (!cfgHidePlayers)
 			{
 				return true;
 			}
@@ -515,7 +525,7 @@ public class NexLeechUtilityPlugin extends Plugin
 
 		if (renderable instanceof NPC)
 		{
-			if (!config.hideThralls() || !canHideNow())
+			if (!cfgHideThralls || !canHideNow())
 			{
 				return true;
 			}
@@ -531,7 +541,14 @@ public class NexLeechUtilityPlugin extends Plugin
 	/** Whether player/thrall hiding is currently allowed by the "only in Nex room" gate. */
 	private boolean canHideNow()
 	{
-		return !config.hidePlayersOnlyInRoom() || inNexRoom;
+		return !cfgHideOnlyInRoom || inNexRoom;
+	}
+
+	private void refreshHideConfig()
+	{
+		cfgHidePlayers = config.hidePlayers();
+		cfgHideThralls = config.hideThralls();
+		cfgHideOnlyInRoom = config.hidePlayersOnlyInRoom();
 	}
 
 	private boolean isInNexRoom()
@@ -624,12 +641,14 @@ public class NexLeechUtilityPlugin extends Plugin
 	/**
 	 * Normalise a Nex chat line: lowercase, strip HTML tags and a leading "nex:"/"nex|" speaker prefix.
 	 */
+	private static final Pattern HTML_TAG = Pattern.compile("<[^>]+>");
+	private static final Pattern SPEAKER_PREFIX = Pattern.compile("^nex[:|]\\s*");
+
 	static String normalize(String raw)
 	{
-		return raw.toLowerCase()
-			.replaceAll("<[^>]+>", "")
-			.replaceFirst("^nex[:|]\\s*", "")
-			.trim();
+		// Precompiled patterns avoid recompiling a regex on every call.
+		String s = HTML_TAG.matcher(raw.toLowerCase()).replaceAll("");
+		return SPEAKER_PREFIX.matcher(s).replaceFirst("").trim();
 	}
 
 	@Provides

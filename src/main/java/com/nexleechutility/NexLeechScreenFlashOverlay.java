@@ -7,12 +7,15 @@ import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import javax.inject.Inject;
 import net.runelite.api.Client;
+import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 
 class NexLeechScreenFlashOverlay extends Overlay
 {
+	private static final Font FLASH_FONT = FontManager.getRunescapeBoldFont().deriveFont(48f);
+
 	private final Client client;
 	private final NexLeechUtilityPlugin plugin;
 	private final NexLeechUtilityConfig config;
@@ -58,7 +61,7 @@ class NexLeechScreenFlashOverlay extends Overlay
 
 		if (text != null && !text.isEmpty())
 		{
-			graphics.setFont(graphics.getFont().deriveFont(Font.BOLD, 48f));
+			graphics.setFont(FLASH_FONT);
 			FontMetrics metrics = graphics.getFontMetrics();
 			int x = (width - metrics.stringWidth(text)) / 2;
 			int y = height / 2 + metrics.getAscent() / 2;
