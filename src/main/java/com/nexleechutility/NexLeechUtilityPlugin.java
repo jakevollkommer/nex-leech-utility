@@ -95,6 +95,9 @@ public class NexLeechUtilityPlugin extends Plugin
 	private int hpFlashTicksLeft;
 	private int prayerFlashTicksLeft;
 
+	/** Cached once per tick so the per-frame draw listener doesn't recompute it. */
+	private boolean inNexRoom;
+
 	private final Function<NPC, HighlightedNpc> highlighter = this::highlight;
 	private final Hooks.RenderableDrawListener drawListener = this::shouldDraw;
 
@@ -385,6 +388,8 @@ public class NexLeechUtilityPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick tick)
 	{
+		inNexRoom = isInNexRoom();
+
 		if (inFight)
 		{
 			playerCount = countPlayers();
@@ -489,33 +494,43 @@ public class NexLeechUtilityPlugin extends Plugin
 		return null;
 	}
 
+	// Called for every rendered entity every frame, so this must stay cheap:
+	// instanceof short-circuits non-actors, and the room check uses a per-tick cache.
 	private boolean shouldDraw(Renderable renderable, boolean drawingUi)
 	{
-		// Shared "only inside the Nex room" gate for player/thrall hiding.
-		boolean roomOk = !config.hidePlayersOnlyInRoom() || isInNexRoom();
-
-		if (config.hidePlayers() && renderable instanceof Player)
+		if (renderable instanceof Player)
 		{
-			Player player = (Player) renderable;
-			if (player == client.getLocalPlayer() || !roomOk)
+			if (!config.hidePlayers())
 			{
 				return true;
 			}
-			return false;
+			Player player = (Player) renderable;
+			if (player == client.getLocalPlayer())
+			{
+				return true;
+			}
+			return !canHideNow();
 		}
 
-		if (config.hideThralls() && roomOk && renderable instanceof NPC)
+		if (renderable instanceof NPC)
 		{
+			if (!config.hideThralls() || !canHideNow())
+			{
+				return true;
+			}
 			int id = ((NPC) renderable).getId();
 			// Arceuus resurrection thralls (ghost/skeleton/zombie, lesser/superior/greater)
 			// are a contiguous id range; their display names don't contain "thrall".
-			if (id >= NpcID.ARCEUUS_THRALL_GHOST_LESSER && id <= NpcID.ARCEUUS_THRALL_ZOMBIE_GREATER)
-			{
-				return false;
-			}
+			return !(id >= NpcID.ARCEUUS_THRALL_GHOST_LESSER && id <= NpcID.ARCEUUS_THRALL_ZOMBIE_GREATER);
 		}
 
 		return true;
+	}
+
+	/** Whether player/thrall hiding is currently allowed by the "only in Nex room" gate. */
+	private boolean canHideNow()
+	{
+		return !config.hidePlayersOnlyInRoom() || inNexRoom;
 	}
 
 	private boolean isInNexRoom()
