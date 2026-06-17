@@ -10,13 +10,15 @@ import net.runelite.api.gameval.NpcID;
  */
 public enum Minion
 {
-	// delaySeconds = time from the warning line until the minion becomes attackable.
-	// Umbra is confirmed 6s after "Darken my shadow!"; the others use the same estimate
-	// for now and can be tuned (the warning->activation gap in the debug log reveals each).
+	// delaySeconds = estimated time from the warning line until the minion becomes attackable.
+	// Tuned from ~21 logged kills (mean warning->activation gap): Fumus ~5.6s, Umbra ~5.8s,
+	// Cruor ~12.8s (blood phase runs much longer), Glacies ~5.8s with a tail to ~7.8s.
+	// Slightly over-estimating is safe: the "<minion>, don't fail me!" chat line truncates
+	// the countdown the instant it's actually vulnerable.
 	FUMUS("Fumus", NpcID.NEX_SMOKEMAGE, "fill my soul with smoke!", "fumus, don't fail me!", 6.0),
 	UMBRA("Umbra", NpcID.NEX_SHADOWMAGE, "darken my shadow!", "umbra, don't fail me!", 6.0),
-	CRUOR("Cruor", NpcID.NEX_BLOODMAGE, "flood my lungs with blood!", "cruor, don't fail me!", 6.0),
-	GLACIES("Glacies", NpcID.NEX_ICEMAGE, "infuse me with the power of ice!", "glacies, don't fail me!", 6.0);
+	CRUOR("Cruor", NpcID.NEX_BLOODMAGE, "flood my lungs with blood!", "cruor, don't fail me!", 13.0),
+	GLACIES("Glacies", NpcID.NEX_ICEMAGE, "infuse me with the power of ice!", "glacies, don't fail me!", 7.0);
 
 	private final String displayName;
 	private final int npcId;
