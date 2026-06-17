@@ -250,8 +250,9 @@ public class NexLeechUtilityPlugin extends Plugin
 			&& minion.atOrAfter(config.startingMinion()))
 		{
 			warningMinion = minion;
-			attackableAtTick = client.getTickCount() + (int) Math.ceil(minion.getDelaySeconds() / 0.6);
-			attackableAtMillis = System.currentTimeMillis() + (long) (minion.getDelaySeconds() * 1000);
+			// Ticks are the source of truth; the wall-clock target is derived for a smooth countdown.
+			attackableAtTick = client.getTickCount() + minion.getDelayTicks();
+			attackableAtMillis = System.currentTimeMillis() + minion.getDelayTicks() * 600L;
 
 			if (config.requestFocusOnWarning())
 			{
