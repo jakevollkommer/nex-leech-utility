@@ -84,6 +84,9 @@ public class NexLeechUtilityPlugin extends Plugin
 	private int attackableAtTick;
 	/** Wall-clock time (ms) at which {@link #warningMinion} is expected to become attackable. */
 	private long attackableAtMillis;
+	/** Whether a focus grab is scheduled, and the time (ms) it should fire. */
+	private boolean focusPending;
+	private long focusAtMillis;
 
 	// Low-stat flash state. A flash stays up while the stat is below its threshold;
 	// if a duration is configured it instead expires after that many ticks.
@@ -124,6 +127,7 @@ public class NexLeechUtilityPlugin extends Plugin
 		inFight = false;
 		activeMinion = null;
 		warningMinion = null;
+		focusPending = false;
 		hpFlashing = false;
 		prayerFlashing = false;
 	}
@@ -139,6 +143,7 @@ public class NexLeechUtilityPlugin extends Plugin
 		leechComplete = false;
 		activeMinion = null;
 		warningMinion = null;
+		focusPending = false;
 		npcOverlayService.rebuild();
 	}
 
@@ -148,6 +153,7 @@ public class NexLeechUtilityPlugin extends Plugin
 		inFight = false;
 		activeMinion = null;
 		warningMinion = null;
+		focusPending = false;
 		// Stop any low-stat flash that was scoped to the fight.
 		hpFlashing = false;
 		prayerFlashing = false;
@@ -246,12 +252,24 @@ public class NexLeechUtilityPlugin extends Plugin
 
 			if (config.requestFocusOnWarning())
 			{
-				grabFocus();
+				// Grab focus `focusLeadSeconds` before the estimated attackable moment.
+				long fireAt = attackableAtMillis - (long) config.focusLeadSeconds() * 1000;
+				if (fireAt <= System.currentTimeMillis())
+				{
+					grabFocus();
+					focusPending = false;
+				}
+				else
+				{
+					focusPending = true;
+					focusAtMillis = fireAt;
+				}
 			}
 		}
 		else
 		{
 			warningMinion = null;
+			focusPending = false;
 		}
 
 		npcOverlayService.rebuild();
@@ -268,6 +286,12 @@ public class NexLeechUtilityPlugin extends Plugin
 		{
 			attackableAtTick = client.getTickCount();
 			attackableAtMillis = System.currentTimeMillis();
+			// If it became attackable before the lead timer fired, grab focus now so it's never missed.
+			if (focusPending)
+			{
+				grabFocus();
+				focusPending = false;
+			}
 		}
 		npcOverlayService.rebuild();
 	}
@@ -314,6 +338,7 @@ public class NexLeechUtilityPlugin extends Plugin
 			{
 				leechComplete = true;
 				warningMinion = null;
+				focusPending = false;
 			}
 		}
 
@@ -363,6 +388,12 @@ public class NexLeechUtilityPlugin extends Plugin
 		if (inFight)
 		{
 			playerCount = countPlayers();
+		}
+
+		if (focusPending && System.currentTimeMillis() >= focusAtMillis)
+		{
+			grabFocus();
+			focusPending = false;
 		}
 
 		// A configured duration (> 0) auto-expires the flash; duration 0 means "until recovered".

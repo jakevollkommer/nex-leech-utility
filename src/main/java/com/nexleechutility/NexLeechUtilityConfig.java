@@ -200,7 +200,7 @@ public interface NexLeechUtilityConfig extends Config
 	@ConfigItem(
 		keyName = "requestFocusOnWarning",
 		name = "Grab focus on warning",
-		description = "Bring the client window to the front when the warning fires.",
+		description = "Bring the client window to the front before your target minion becomes attackable.",
 		section = warningSection,
 		position = 3
 	)
@@ -210,11 +210,25 @@ public interface NexLeechUtilityConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "focusLeadSeconds",
+		name = "Focus lead (seconds)",
+		description = "Grab focus this many seconds before the minion is estimated to become attackable. "
+			+ "0 = at the estimated moment; a high value grabs focus as soon as the warning appears. "
+			+ "If it becomes attackable sooner, focus is grabbed then regardless.",
+		section = warningSection,
+		position = 4
+	)
+	default int focusLeadSeconds()
+	{
+		return 2;
+	}
+
+	@ConfigItem(
 		keyName = "focusOnKillEnd",
 		name = "Grab focus on kill end",
 		description = "Bring the client window to the front when Nex dies and loot drops, so you can grab it.",
 		section = warningSection,
-		position = 4
+		position = 5
 	)
 	default boolean focusOnKillEnd()
 	{
@@ -226,7 +240,7 @@ public interface NexLeechUtilityConfig extends Config
 		name = "Focus mode",
 		description = "Applies to both focus grabs. REQUEST politely asks for attention (dock bounce); FORCE raises the window.",
 		section = warningSection,
-		position = 5
+		position = 6
 	)
 	default FocusMode focusMode()
 	{
