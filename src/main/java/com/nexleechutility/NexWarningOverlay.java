@@ -74,29 +74,38 @@ class NexWarningOverlay extends Overlay
 		return null;
 	}
 
+	// The seconds estimate is only trustworthy in the final burst; above this it's the bursty
+	// held-flat HP bar inflating the number, so we show HP proximity only.
+	private static final double RELIABLE_SECONDS = 10.0;
+
 	private String countdownText()
 	{
-		double seconds = plugin.getSecondsUntilAttackable();
+		double nexHp = plugin.getNexHpPercent();
 		Minion minion = plugin.getWarningMinion();
 		int threshold = minion != null ? minion.getThresholdPercent() : 0;
 
-		if (seconds == 0)
+		if (nexHp < 0)
 		{
-			return "attackable any moment";
+			return "attackable soon";
 		}
-		if (seconds < 0)
+		if (nexHp - threshold <= 0)
 		{
-			// No time estimate yet (HP unreadable, or Nex not losing HP) - show the HP context.
-			double nexHp = plugin.getNexHpPercent();
-			return nexHp >= 0
-				? String.format("attackable at %d%% (Nex %.0f%%)", threshold, nexHp)
-				: "attackable soon";
+			// At/past the threshold but not yet flagged - be ready.
+			return String.format("Nex %.0f%% · any moment", nexHp);
 		}
-		if (config.countdownUnit() == NexLeechUtilityConfig.CountdownUnit.TICKS)
+
+		// Always show HP proximity (the reliable signal).
+		String text = String.format("Nex %.0f%% (attackable at %d%%)", nexHp, threshold);
+
+		// Append a seconds/ticks estimate only when it's in a believable range.
+		double seconds = plugin.getSecondsUntilAttackable();
+		if (seconds > 0 && seconds <= RELIABLE_SECONDS)
 		{
-			return String.format("attackable in %dt", plugin.getTicksUntilAttackable());
+			text += config.countdownUnit() == NexLeechUtilityConfig.CountdownUnit.TICKS
+				? String.format(" · ~%dt", plugin.getTicksUntilAttackable())
+				: String.format(" · ~%.1fs", seconds);
 		}
-		return String.format("attackable in %.1fs", seconds);
+		return text;
 	}
 
 	private static void drawCentered(Graphics2D graphics, String text, int width, int y, Font font, Color color)
