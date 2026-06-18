@@ -82,13 +82,17 @@ public class NexLeechUtilityPlugin extends Plugin
 
 	/** The minion the warning overlay is currently alerting about; null if no warning. */
 	@Getter private Minion warningMinion;
-	/** Game tick at which {@link #warningMinion} is expected to become attackable. */
-	private int attackableAtTick;
-	/** Wall-clock time (ms) at which {@link #warningMinion} is expected to become attackable. */
-	private long attackableAtMillis;
-	/** Whether a focus grab is scheduled, and the time (ms) it should fire. */
+	/** Whether a focus grab is still pending for the current warning. */
 	private boolean focusPending;
-	private long focusAtMillis;
+
+	// Nex HP tracking. The minion attackable trigger is HP-gated, so we read Nex's live HP%
+	// and her drain rate to estimate seconds-to-attackable adaptively (DPS-independent).
+	private static final int RATE_SAMPLES = 10; // ~6s rolling window over game ticks
+	@Getter private double nexHpPercent = -1; // -1 = unknown / not readable
+	private final double[] hpSamples = new double[RATE_SAMPLES];
+	private int hpSampleHead;
+	private int hpSampleCount;
+	private double drainPercentPerSec; // smoothed HP% drained per second; <= 0 means unknown
 
 	// Low-stat flash state. A flash stays up while the stat is below its threshold;
 	// if a duration is configured it instead expires after that many ticks.
@@ -156,6 +160,8 @@ public class NexLeechUtilityPlugin extends Plugin
 		activeMinion = null;
 		warningMinion = null;
 		focusPending = false;
+		nexHpPercent = -1;
+		resetDrainRate();
 		npcOverlayService.rebuild();
 	}
 
@@ -166,6 +172,8 @@ public class NexLeechUtilityPlugin extends Plugin
 		activeMinion = null;
 		warningMinion = null;
 		focusPending = false;
+		nexHpPercent = -1;
+		resetDrainRate();
 		// Stop any low-stat flash that was scoped to the fight.
 		hpFlashing = false;
 		prayerFlashing = false;
@@ -259,25 +267,8 @@ public class NexLeechUtilityPlugin extends Plugin
 			&& minion.atOrAfter(config.startingMinion()))
 		{
 			warningMinion = minion;
-			// Ticks are the source of truth; the wall-clock target is derived for a smooth countdown.
-			attackableAtTick = client.getTickCount() + minion.getDelayTicks();
-			attackableAtMillis = System.currentTimeMillis() + minion.getDelayTicks() * 600L;
-
-			if (config.requestFocusOnWarning())
-			{
-				// Grab focus `focusLeadSeconds` before the estimated attackable moment.
-				long fireAt = attackableAtMillis - (long) config.focusLeadSeconds() * 1000;
-				if (fireAt <= System.currentTimeMillis())
-				{
-					grabFocus();
-					focusPending = false;
-				}
-				else
-				{
-					focusPending = true;
-					focusAtMillis = fireAt;
-				}
-			}
+			// Focus is grabbed live once the DPS-based estimate drops within the lead time (onGameTick).
+			focusPending = config.requestFocusOnWarning();
 		}
 		else
 		{
@@ -294,17 +285,11 @@ public class NexLeechUtilityPlugin extends Plugin
 		// Keep the warning up (it switches to an "attack now" message) until the phase
 		// passes, we leech enough, or the fight ends - so it stays visible.
 		activeMinion = minion;
-		// The minion is vulnerable now - clear the countdown entirely.
-		if (warningMinion == minion)
+		// It became attackable before the estimate reached the lead time - grab focus now so it's never missed.
+		if (warningMinion == minion && focusPending)
 		{
-			attackableAtTick = client.getTickCount();
-			attackableAtMillis = System.currentTimeMillis();
-			// If it became attackable before the lead timer fired, grab focus now so it's never missed.
-			if (focusPending)
-			{
-				grabFocus();
-				focusPending = false;
-			}
+			grabFocus();
+			focusPending = false;
 		}
 		npcOverlayService.rebuild();
 	}
@@ -321,16 +306,34 @@ public class NexLeechUtilityPlugin extends Plugin
 		return warningMinion != null && warningMinion == activeMinion;
 	}
 
-	/** @return estimated real seconds until the warned-about minion becomes attackable (>= 0). */
+	/**
+	 * @return estimated seconds until the warned-about minion becomes attackable, derived live from
+	 *         Nex's current HP and her measured drain rate. 0 = at/past the threshold;
+	 *         -1 = unknown (HP unreadable, or Nex not losing HP / healing).
+	 */
 	public double getSecondsUntilAttackable()
 	{
-		return Math.max(0.0, (attackableAtMillis - System.currentTimeMillis()) / 1000.0);
+		if (warningMinion == null || nexHpPercent < 0)
+		{
+			return -1;
+		}
+		double gap = nexHpPercent - warningMinion.getThresholdPercent();
+		if (gap <= 0)
+		{
+			return 0;
+		}
+		if (drainPercentPerSec <= 0.01)
+		{
+			return -1;
+		}
+		return gap / drainPercentPerSec;
 	}
 
-	/** @return estimated game ticks until the warned-about minion becomes attackable (>= 0). */
+	/** @return estimated game ticks until attackable (>= 0), or -1 if unknown. */
 	public int getTicksUntilAttackable()
 	{
-		return Math.max(0, attackableAtTick - client.getTickCount());
+		double seconds = getSecondsUntilAttackable();
+		return seconds < 0 ? -1 : (int) Math.round(seconds / 0.6);
 	}
 
 	@Subscribe
@@ -403,12 +406,18 @@ public class NexLeechUtilityPlugin extends Plugin
 		if (inFight)
 		{
 			playerCount = countPlayers();
+			updateNexHp();
 		}
 
-		if (focusPending && System.currentTimeMillis() >= focusAtMillis)
+		// Grab focus once the live estimate drops within the configured lead time.
+		if (focusPending)
 		{
-			grabFocus();
-			focusPending = false;
+			double estimate = getSecondsUntilAttackable();
+			if (estimate >= 0 && estimate <= config.focusLeadSeconds())
+			{
+				grabFocus();
+				focusPending = false;
+			}
 		}
 
 		// A configured duration (> 0) auto-expires the flash; duration 0 means "until recovered".
@@ -459,6 +468,48 @@ public class NexLeechUtilityPlugin extends Plugin
 	private int countPlayers()
 	{
 		return (int) client.getTopLevelWorldView().players().stream().count();
+	}
+
+	/** Sample Nex's HP% this tick and recompute the smoothed drain rate (HP% per second). */
+	private void updateNexHp()
+	{
+		NPC nex = client.getTopLevelWorldView().npcs().stream()
+			.filter(n -> "Nex".equalsIgnoreCase(n.getName()))
+			.findFirst().orElse(null);
+
+		int scale = nex == null ? 0 : nex.getHealthScale();
+		int ratio = nex == null ? -1 : nex.getHealthRatio();
+		if (scale <= 0 || ratio < 0)
+		{
+			// HP bar not currently readable - keep the last value but stop trusting the rate.
+			nexHpPercent = -1;
+			resetDrainRate();
+			return;
+		}
+
+		nexHpPercent = 100.0 * ratio / scale;
+
+		hpSamples[hpSampleHead % RATE_SAMPLES] = nexHpPercent;
+		hpSampleHead++;
+		if (hpSampleCount < RATE_SAMPLES)
+		{
+			hpSampleCount++;
+		}
+
+		if (hpSampleCount >= 2)
+		{
+			double newest = hpSamples[(hpSampleHead - 1) % RATE_SAMPLES];
+			double oldest = hpSamples[(hpSampleHead - hpSampleCount) % RATE_SAMPLES];
+			double spanSeconds = (hpSampleCount - 1) * 0.6;
+			drainPercentPerSec = (oldest - newest) / spanSeconds; // negative if she's healing
+		}
+	}
+
+	private void resetDrainRate()
+	{
+		hpSampleHead = 0;
+		hpSampleCount = 0;
+		drainPercentPerSec = 0;
 	}
 
 	private HighlightedNpc highlight(NPC npc)

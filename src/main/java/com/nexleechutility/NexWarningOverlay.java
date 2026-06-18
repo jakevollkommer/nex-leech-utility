@@ -67,27 +67,36 @@ class NexWarningOverlay extends Overlay
 			drawCentered(graphics, name + " INCOMING", width, centerY, TITLE_FONT, Color.RED);
 			if (config.showAttackCountdown())
 			{
-				boolean ticks = config.countdownUnit() == NexLeechUtilityConfig.CountdownUnit.TICKS;
-				int ticksLeft = plugin.getTicksUntilAttackable();
-				double secsLeft = plugin.getSecondsUntilAttackable();
-				// Countdown has run out but it's not vulnerable yet - tell the player to be ready.
-				boolean ready = ticks ? ticksLeft <= 0 : secsLeft <= 0.05;
-				String sub;
-				if (ready)
-				{
-					sub = "attackable any moment";
-				}
-				else
-				{
-					sub = ticks
-						? String.format("attackable in %dt", ticksLeft)
-						: String.format("attackable in %.1fs", secsLeft);
-				}
-				drawCentered(graphics, sub, width, centerY + 34, SUB_FONT, Color.YELLOW);
+				drawCentered(graphics, countdownText(), width, centerY + 34, SUB_FONT, Color.YELLOW);
 			}
 		}
 
 		return null;
+	}
+
+	private String countdownText()
+	{
+		double seconds = plugin.getSecondsUntilAttackable();
+		Minion minion = plugin.getWarningMinion();
+		int threshold = minion != null ? minion.getThresholdPercent() : 0;
+
+		if (seconds == 0)
+		{
+			return "attackable any moment";
+		}
+		if (seconds < 0)
+		{
+			// No time estimate yet (HP unreadable, or Nex not losing HP) - show the HP context.
+			double nexHp = plugin.getNexHpPercent();
+			return nexHp >= 0
+				? String.format("attackable at %d%% (Nex %.0f%%)", threshold, nexHp)
+				: "attackable soon";
+		}
+		if (config.countdownUnit() == NexLeechUtilityConfig.CountdownUnit.TICKS)
+		{
+			return String.format("attackable in %dt", plugin.getTicksUntilAttackable());
+		}
+		return String.format("attackable in %.1fs", seconds);
 	}
 
 	private static void drawCentered(Graphics2D graphics, String text, int width, int y, Font font, Color color)

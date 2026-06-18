@@ -10,31 +10,29 @@ import net.runelite.api.gameval.NpcID;
  */
 public enum Minion
 {
-	// delayTicks = the EARLIEST number of game ticks from the warning line until the minion can
-	// become attackable. OSRS is tick-based (0.6s/tick), so ticks are the source of truth and the
-	// seconds countdown is derived (ticks * 0.6). Keyed to the earliest so the countdown reaches 0
-	// at the soonest it could be vulnerable - you're ready in time and can never miss. If it's not
-	// live yet the overlay shows "any moment"; the "<minion>, don't fail me!" chat line flips it to
-	// "ATTACK NOW" at the real moment. Earliest over ~21 logged kills: Fumus 9t (5.4s), Umbra 6t
-	// (3.6s), Cruor 8t (4.8s), Glacies 6t (3.6s). (Blood phase / Cruor can run up to ~30t.)
-	FUMUS("Fumus", NpcID.NEX_SMOKEMAGE, "fill my soul with smoke!", "fumus, don't fail me!", 9),
-	UMBRA("Umbra", NpcID.NEX_SHADOWMAGE, "darken my shadow!", "umbra, don't fail me!", 6),
-	CRUOR("Cruor", NpcID.NEX_BLOODMAGE, "flood my lungs with blood!", "cruor, don't fail me!", 8),
-	GLACIES("Glacies", NpcID.NEX_ICEMAGE, "infuse me with the power of ice!", "glacies, don't fail me!", 6);
+	// thresholdPercent = Nex's HP% at which this minion becomes attackable. The trigger is HP-gated
+	// (DPS-independent), confirmed in-game and on the wiki: Nex has 3400 HP in 20% phase bands, and
+	// each minion goes live as she crosses its threshold. The seconds countdown is NOT a fixed
+	// value - it's derived live from Nex's current HP and her measured drain rate, so it adapts to
+	// team DPS. The "<minion>, don't fail me!" chat line is the frame-exact confirmation.
+	FUMUS("Fumus", NpcID.NEX_SMOKEMAGE, "fill my soul with smoke!", "fumus, don't fail me!", 80),
+	UMBRA("Umbra", NpcID.NEX_SHADOWMAGE, "darken my shadow!", "umbra, don't fail me!", 60),
+	CRUOR("Cruor", NpcID.NEX_BLOODMAGE, "flood my lungs with blood!", "cruor, don't fail me!", 40),
+	GLACIES("Glacies", NpcID.NEX_ICEMAGE, "infuse me with the power of ice!", "glacies, don't fail me!", 20);
 
 	private final String displayName;
 	private final int npcId;
 	private final String warningLine;
 	private final String activationLine;
-	private final int delayTicks;
+	private final int thresholdPercent;
 
-	Minion(String displayName, int npcId, String warningLine, String activationLine, int delayTicks)
+	Minion(String displayName, int npcId, String warningLine, String activationLine, int thresholdPercent)
 	{
 		this.displayName = displayName;
 		this.npcId = npcId;
 		this.warningLine = warningLine;
 		this.activationLine = activationLine;
-		this.delayTicks = delayTicks;
+		this.thresholdPercent = thresholdPercent;
 	}
 
 	public int getNpcId()
@@ -42,9 +40,9 @@ public enum Minion
 		return npcId;
 	}
 
-	public int getDelayTicks()
+	public int getThresholdPercent()
 	{
-		return delayTicks;
+		return thresholdPercent;
 	}
 
 	public String getDisplayName()
