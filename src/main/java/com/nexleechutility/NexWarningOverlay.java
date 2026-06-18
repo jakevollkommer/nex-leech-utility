@@ -20,7 +20,6 @@ import net.runelite.client.ui.overlay.OverlayPosition;
 class NexWarningOverlay extends Overlay
 {
 	private static final Font TITLE_FONT = FontManager.getRunescapeBoldFont().deriveFont(40f);
-	private static final Font SUB_FONT = FontManager.getRunescapeBoldFont().deriveFont(26f);
 
 	private final Client client;
 	private final NexLeechUtilityPlugin plugin;
@@ -58,54 +57,51 @@ class NexWarningOverlay extends Overlay
 		// Upper-middle, below the Nex health bar.
 		int centerY = (int) (height * 0.22);
 
+		// Single compact line: "UMBRA  4%" / "UMBRA  ~2s" (incoming) or "ATTACK UMBRA" (live).
 		if (attackable)
 		{
-			drawCentered(graphics, "ATTACK " + name + " NOW", width, centerY, TITLE_FONT, Color.GREEN);
+			drawCentered(graphics, "ATTACK " + name, width, centerY, TITLE_FONT, Color.GREEN);
 		}
 		else
 		{
-			drawCentered(graphics, name + " INCOMING", width, centerY, TITLE_FONT, Color.RED);
-			if (config.showAttackCountdown())
-			{
-				drawCentered(graphics, countdownText(), width, centerY + 34, SUB_FONT, Color.YELLOW);
-			}
+			String prox = proximity();
+			String label = prox.isEmpty() ? name : name + "  " + prox;
+			drawCentered(graphics, label, width, centerY, TITLE_FONT, Color.RED);
 		}
 
 		return null;
 	}
 
 	// The seconds estimate is only trustworthy in the final burst; above this it's the bursty
-	// held-flat HP bar inflating the number, so we show HP proximity only.
+	// held-flat HP bar inflating the number, so we fall back to HP proximity.
 	private static final double RELIABLE_SECONDS = 10.0;
 
-	private String countdownText()
+	/** Short proximity token: "" / "now" / "4%" (HP to go) / "~2s" (reliable final approach). */
+	private String proximity()
 	{
+		if (!config.showAttackCountdown())
+		{
+			return "";
+		}
 		double nexHp = plugin.getNexHpPercent();
 		Minion minion = plugin.getWarningMinion();
-		int threshold = minion != null ? minion.getThresholdPercent() : 0;
-
-		if (nexHp < 0)
+		if (nexHp < 0 || minion == null)
 		{
-			return "attackable soon";
+			return "";
 		}
-		if (nexHp - threshold <= 0)
+		double gap = nexHp - minion.getThresholdPercent();
+		if (gap <= 0)
 		{
-			// At/past the threshold but not yet flagged - be ready.
-			return String.format("Nex %.0f%% · any moment", nexHp);
+			return "now";
 		}
-
-		// Always show HP proximity (the reliable signal).
-		String text = String.format("Nex %.0f%% (attackable at %d%%)", nexHp, threshold);
-
-		// Append a seconds/ticks estimate only when it's in a believable range.
 		double seconds = plugin.getSecondsUntilAttackable();
 		if (seconds > 0 && seconds <= RELIABLE_SECONDS)
 		{
-			text += config.countdownUnit() == NexLeechUtilityConfig.CountdownUnit.TICKS
-				? String.format(" · ~%dt", plugin.getTicksUntilAttackable())
-				: String.format(" · ~%.1fs", seconds);
+			return config.countdownUnit() == NexLeechUtilityConfig.CountdownUnit.TICKS
+				? String.format("~%dt", plugin.getTicksUntilAttackable())
+				: String.format("~%.0fs", seconds);
 		}
-		return text;
+		return String.format("%.0f%%", gap);
 	}
 
 	private static void drawCentered(Graphics2D graphics, String text, int width, int y, Font font, Color color)
