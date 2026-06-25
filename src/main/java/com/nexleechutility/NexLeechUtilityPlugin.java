@@ -2,6 +2,8 @@ package com.nexleechutility;
 
 import com.google.inject.Provides;
 import java.awt.Color;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
@@ -9,6 +11,8 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
+import net.runelite.api.CollisionData;
+import net.runelite.api.CollisionDataFlag;
 import net.runelite.api.Hitsplat;
 import net.runelite.api.HitsplatID;
 import net.runelite.api.NPC;
@@ -20,8 +24,11 @@ import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.HitsplatApplied;
 import net.runelite.api.events.MenuEntryAdded;
+import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
+import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.NpcID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.callback.ClientThread;
@@ -68,6 +75,11 @@ public class NexLeechUtilityPlugin extends Plugin
 	@Inject private NexLeechOverlay damageOverlay;
 	@Inject private NexWarningOverlay warningOverlay;
 	@Inject private NexLeechScreenFlashOverlay screenFlashOverlay;
+	@Inject private NexReaverPredictorOverlay reaverPredictorOverlay;
+
+	// Blood-reaver spawn prediction (active during the blood phase, before reavers actually spawn).
+	@Getter private boolean reaverPredictorActive;
+	@Getter private final List<WorldPoint> predictedReaverTiles = new ArrayList<>();
 
 	@Getter private boolean inFight;
 	@Getter private boolean everFought;
@@ -120,6 +132,7 @@ public class NexLeechUtilityPlugin extends Plugin
 		overlayManager.add(damageOverlay);
 		overlayManager.add(warningOverlay);
 		overlayManager.add(screenFlashOverlay);
+		overlayManager.add(reaverPredictorOverlay);
 		npcOverlayService.registerHighlighter(highlighter);
 		hooks.registerRenderableDrawListener(drawListener);
 
@@ -140,6 +153,7 @@ public class NexLeechUtilityPlugin extends Plugin
 		overlayManager.remove(damageOverlay);
 		overlayManager.remove(warningOverlay);
 		overlayManager.remove(screenFlashOverlay);
+		overlayManager.remove(reaverPredictorOverlay);
 		inFight = false;
 		activeMinion = null;
 		warningMinion = null;
@@ -162,6 +176,7 @@ public class NexLeechUtilityPlugin extends Plugin
 		focusPending = false;
 		nexHpPercent = -1;
 		resetDrainRate();
+		stopReaverPrediction();
 		npcOverlayService.rebuild();
 	}
 
@@ -174,6 +189,7 @@ public class NexLeechUtilityPlugin extends Plugin
 		focusPending = false;
 		nexHpPercent = -1;
 		resetDrainRate();
+		stopReaverPrediction();
 		// Stop any low-stat flash that was scoped to the fight.
 		hpFlashing = false;
 		prayerFlashing = false;
@@ -260,6 +276,16 @@ public class NexLeechUtilityPlugin extends Plugin
 		// A new phase begins: the previous minion is no longer attackable.
 		activeMinion = null;
 
+		// Blood phase begins -> reavers are coming; ice phase begins -> blood phase is over.
+		if (minion == Minion.CRUOR && config.predictReaverSpawns())
+		{
+			reaverPredictorActive = true;
+		}
+		else if (minion == Minion.GLACIES)
+		{
+			stopReaverPrediction();
+		}
+
 		// Alert for the minion we intend to leech (the starting minion or any after it),
 		// but only while we still need damage. Otherwise clear any stale warning.
 		if (config.showVulnerabilityWarning()
@@ -337,6 +363,18 @@ public class NexLeechUtilityPlugin extends Plugin
 	}
 
 	@Subscribe
+	public void onNpcSpawned(NpcSpawned event)
+	{
+		int id = event.getNpc().getId();
+		// The in-fight blood reavers Nex summons are the "boss" variant (11294); 11293 are the
+		// ambient prison reavers. Once the real ones spawn, stop predicting (highlight takes over).
+		if (id == NpcID.NEX_PRISON_BLOOD_REAVER_BOSS)
+		{
+			stopReaverPrediction();
+		}
+	}
+
+	@Subscribe
 	public void onHitsplatApplied(HitsplatApplied event)
 	{
 		if (!inFight || !(event.getActor() instanceof NPC))
@@ -407,6 +445,12 @@ public class NexLeechUtilityPlugin extends Plugin
 		{
 			playerCount = countPlayers();
 			updateNexHp();
+		}
+
+		// Re-anchor the reaver prediction to Nex's live tile (follows her as she dashes).
+		if (reaverPredictorActive)
+		{
+			updateReaverPrediction();
 		}
 
 		// Grab focus once the live estimate drops within the configured lead time.
@@ -510,6 +554,111 @@ public class NexLeechUtilityPlugin extends Plugin
 		hpSampleHead = 0;
 		hpSampleCount = 0;
 		drainPercentPerSec = 0;
+	}
+
+	private NPC findNex()
+	{
+		return client.getTopLevelWorldView().npcs().stream()
+			.filter(n -> "Nex".equalsIgnoreCase(n.getName()))
+			.findFirst().orElse(null);
+	}
+
+	private void stopReaverPrediction()
+	{
+		reaverPredictorActive = false;
+		predictedReaverTiles.clear();
+	}
+
+	/**
+	 * Re-anchor the predicted reaver tiles to Nex's current tile: the N most-likely offsets
+	 * (HOT first, then WARM) that land on walkable tiles. Follows Nex as she dashes.
+	 */
+	private void updateReaverPrediction()
+	{
+		predictedReaverTiles.clear();
+		NPC nex = findNex();
+		WorldPoint base = nex == null ? null : nex.getWorldLocation();
+		if (base == null)
+		{
+			return;
+		}
+		int want = config.reaverPredictCount();
+		for (int[] o : ReaverSpawns.SLOTS)
+		{
+			if (predictedReaverTiles.size() >= want)
+			{
+				break;
+			}
+			WorldPoint wp = base.dx(o[0]).dy(o[1]);
+			// Clear-path clip: reavers only spawn where there's an open walkable line from Nex,
+			// so a slot in a blocked direction (e.g. across a wall when she's in a corridor) drops out.
+			if (clearPathFromNex(base, wp))
+			{
+				predictedReaverTiles.add(wp);
+			}
+		}
+	}
+
+	/** True if every tile on the straight line from {@code from} to {@code to} (inclusive) is walkable. */
+	private boolean clearPathFromNex(WorldPoint from, WorldPoint to)
+	{
+		int x = from.getX();
+		int y = from.getY();
+		while (x != to.getX() || y != to.getY())
+		{
+			x += Integer.signum(to.getX() - x);
+			y += Integer.signum(to.getY() - y);
+			if (!isWalkable(new WorldPoint(x, y, from.getPlane())))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** @return the predicted reaver tile nearest the local player (for distinct highlighting), or null. */
+	public WorldPoint nearestPredictedTile()
+	{
+		Player me = client.getLocalPlayer();
+		if (me == null || me.getWorldLocation() == null || predictedReaverTiles.isEmpty())
+		{
+			return null;
+		}
+		WorldPoint from = me.getWorldLocation();
+		WorldPoint best = null;
+		int bestDist = Integer.MAX_VALUE;
+		for (WorldPoint wp : predictedReaverTiles)
+		{
+			int d = from.distanceTo(wp);
+			if (d < bestDist)
+			{
+				bestDist = d;
+				best = wp;
+			}
+		}
+		return best;
+	}
+
+	private boolean isWalkable(WorldPoint wp)
+	{
+		LocalPoint lp = LocalPoint.fromWorld(client, wp);
+		if (lp == null)
+		{
+			return false;
+		}
+		CollisionData[] maps = client.getCollisionMaps();
+		if (maps == null || maps[wp.getPlane()] == null)
+		{
+			return true; // can't verify - don't over-filter
+		}
+		int[][] flags = maps[wp.getPlane()].getFlags();
+		int sx = lp.getSceneX();
+		int sy = lp.getSceneY();
+		if (sx < 0 || sy < 0 || sx >= flags.length || sy >= flags.length)
+		{
+			return false;
+		}
+		return (flags[sx][sy] & CollisionDataFlag.BLOCK_MOVEMENT_FULL) == 0;
 	}
 
 	private HighlightedNpc highlight(NPC npc)
