@@ -54,31 +54,31 @@ class NexReaverPredictorOverlay extends Overlay
 
 		for (WorldPoint wp : plugin.getPredictedReaverTiles())
 		{
-			LocalPoint sw = LocalPoint.fromWorld(client, wp);
-			if (sw == null)
+			LocalPoint southWestTile = LocalPoint.fromWorld(client, wp);
+			if (southWestTile == null)
 			{
 				continue;
 			}
 			// Shift the SW tile to the centre of the 2x2 footprint for the area poly.
 			LocalPoint center = new LocalPoint(
-				sw.getX() + (REAVER_SIZE - 1) * Perspective.LOCAL_HALF_TILE_SIZE,
-				sw.getY() + (REAVER_SIZE - 1) * Perspective.LOCAL_HALF_TILE_SIZE);
+				southWestTile.getX() + (REAVER_SIZE - 1) * Perspective.LOCAL_HALF_TILE_SIZE,
+				southWestTile.getY() + (REAVER_SIZE - 1) * Perspective.LOCAL_HALF_TILE_SIZE);
 
 			boolean isNearest = wp.equals(nearest);
-			Color c = isNearest ? nearestColor : color;
+			Color tileColor = isNearest ? nearestColor : color;
 			graphics.setStroke(new BasicStroke(isNearest ? 2.5f : 1.5f));
 
 			Polygon poly = Perspective.getCanvasTileAreaPoly(client, center, REAVER_SIZE);
 			if (poly != null)
 			{
-				graphics.setColor(c);
+				graphics.setColor(tileColor);
 				graphics.draw(poly);
 			}
 
 			Point text = Perspective.getCanvasTextLocation(client, graphics, center, LABEL, 0);
 			if (text != null)
 			{
-				OverlayUtil.renderTextLocation(graphics, text, LABEL, c);
+				OverlayUtil.renderTextLocation(graphics, text, LABEL, tileColor);
 			}
 		}
 		return null;

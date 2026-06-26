@@ -64,8 +64,8 @@ class NexWarningOverlay extends Overlay
 		}
 		else
 		{
-			String prox = proximity();
-			String label = prox.isEmpty() ? name : name + "  " + prox;
+			String proximity = proximity();
+			String label = proximity.isEmpty() ? name : name + "  " + proximity;
 			drawCentered(graphics, label, width, centerY, TITLE_FONT, Color.RED);
 		}
 
@@ -89,19 +89,20 @@ class NexWarningOverlay extends Overlay
 		{
 			return "";
 		}
-		double gap = nexHp - minion.getThresholdPercent();
-		if (gap <= 0)
+		double hpAboveThreshold = nexHp - minion.getThresholdPercent();
+		if (hpAboveThreshold <= 0)
 		{
 			return "now";
 		}
 		double seconds = plugin.getSecondsUntilAttackable();
-		if (seconds > 0 && seconds <= RELIABLE_SECONDS)
+		boolean secondsEstimateReliable = seconds > 0 && seconds <= RELIABLE_SECONDS;
+		if (secondsEstimateReliable)
 		{
 			return config.countdownUnit() == NexLeechUtilityConfig.CountdownUnit.TICKS
 				? String.format("~%dt", plugin.getTicksUntilAttackable())
 				: String.format("~%.0fs", seconds);
 		}
-		return String.format("%.0f%%", gap);
+		return String.format("%.0f%%", hpAboveThreshold);
 	}
 
 	private static void drawCentered(Graphics2D graphics, String text, int width, int y, Font font, Color color)

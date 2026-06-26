@@ -39,27 +39,19 @@ class NexLeechScreenFlashOverlay extends Overlay
 			return null;
 		}
 
-		Color base;
-		String text;
-		if (flash == NexLeechUtilityPlugin.FlashType.HP)
-		{
-			base = config.lowHpFlashColor();
-			text = config.lowHpFlashText();
-		}
-		else
-		{
-			base = config.lowPrayerFlashColor();
-			text = config.lowPrayerFlashText();
-		}
+		boolean isHpFlash = flash == NexLeechUtilityPlugin.FlashType.HP;
+		Color tintColor = isHpFlash ? config.lowHpFlashColor() : config.lowPrayerFlashColor();
+		String text = isHpFlash ? config.lowHpFlashText() : config.lowPrayerFlashText();
 
 		int width = client.getCanvasWidth();
 		int height = client.getCanvasHeight();
 
 		// Screen tint at the configured opacity; stays up while the flash is active.
-		graphics.setColor(base);
+		graphics.setColor(tintColor);
 		graphics.fillRect(0, 0, width, height);
 
-		if (text != null && !text.isEmpty())
+		boolean hasText = text != null && !text.isEmpty();
+		if (hasText)
 		{
 			graphics.setFont(FLASH_FONT);
 			FontMetrics metrics = graphics.getFontMetrics();

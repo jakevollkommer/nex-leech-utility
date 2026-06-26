@@ -26,7 +26,8 @@ class NexLeechOverlay extends OverlayPanel
 	public Dimension render(Graphics2D graphics)
 	{
 		// Keep showing the last kill's stats after the fight ends.
-		if (!config.showDamageOverlay() || (!plugin.isInFight() && !plugin.isEverFought()))
+		boolean haveStatsToShow = plugin.isInFight() || plugin.isEverFought();
+		if (!config.showDamageOverlay() || !haveStatsToShow)
 		{
 			return null;
 		}
