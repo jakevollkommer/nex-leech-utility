@@ -2,6 +2,8 @@ package com.nexleechutility;
 
 import com.google.inject.Provides;
 import java.awt.Color;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
@@ -9,6 +11,8 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
+import net.runelite.api.CollisionData;
+import net.runelite.api.CollisionDataFlag;
 import net.runelite.api.Hitsplat;
 import net.runelite.api.HitsplatID;
 import net.runelite.api.NPC;
@@ -20,8 +24,11 @@ import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.HitsplatApplied;
 import net.runelite.api.events.MenuEntryAdded;
+import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
+import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.NpcID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.callback.ClientThread;
@@ -52,6 +59,15 @@ public class NexLeechUtilityPlugin extends Plugin
 	/** Map region id of the Nex arena (Ancient Prison). */
 	private static final int NEX_REGION = 11601;
 
+	/** Normalised chat line Nex speaks when she dies, ending the fight. */
+	private static final String NEX_DEATH_LINE = "taste my wrath!";
+
+	// Values of the NEX_BARRIER varbit, which tracks the state of the prison barrier / fight.
+	private static final int BARRIER_INACTIVE = 0;
+	private static final int BARRIER_RESETTING = 1;
+	private static final int BARRIER_NEX_DEAD = 2;
+	private static final int BARRIER_FIGHT_ACTIVE = 3;
+
 	public enum FlashType
 	{
 		HP,
@@ -68,6 +84,11 @@ public class NexLeechUtilityPlugin extends Plugin
 	@Inject private NexLeechOverlay damageOverlay;
 	@Inject private NexWarningOverlay warningOverlay;
 	@Inject private NexLeechScreenFlashOverlay screenFlashOverlay;
+	@Inject private NexReaverPredictorOverlay reaverPredictorOverlay;
+
+	// Blood-reaver spawn prediction (active during the blood phase, before reavers actually spawn).
+	@Getter private boolean reaverPredictorActive;
+	@Getter private final List<WorldPoint> predictedReaverTiles = new ArrayList<>();
 
 	@Getter private boolean inFight;
 	@Getter private boolean everFought;
@@ -120,12 +141,14 @@ public class NexLeechUtilityPlugin extends Plugin
 		overlayManager.add(damageOverlay);
 		overlayManager.add(warningOverlay);
 		overlayManager.add(screenFlashOverlay);
+		overlayManager.add(reaverPredictorOverlay);
 		npcOverlayService.registerHighlighter(highlighter);
 		hooks.registerRenderableDrawListener(drawListener);
 
 		clientThread.invokeLater(() ->
 		{
-			if (client.getVarbitValue(VarbitID.NEX_BARRIER) == 3)
+			// Reloaded mid-fight (e.g. plugin enabled during a kill) - pick up the active fight.
+			if (client.getVarbitValue(VarbitID.NEX_BARRIER) == BARRIER_FIGHT_ACTIVE)
 			{
 				startFight();
 			}
@@ -140,6 +163,7 @@ public class NexLeechUtilityPlugin extends Plugin
 		overlayManager.remove(damageOverlay);
 		overlayManager.remove(warningOverlay);
 		overlayManager.remove(screenFlashOverlay);
+		overlayManager.remove(reaverPredictorOverlay);
 		inFight = false;
 		activeMinion = null;
 		warningMinion = null;
@@ -162,6 +186,7 @@ public class NexLeechUtilityPlugin extends Plugin
 		focusPending = false;
 		nexHpPercent = -1;
 		resetDrainRate();
+		stopReaverPrediction();
 		npcOverlayService.rebuild();
 	}
 
@@ -174,6 +199,7 @@ public class NexLeechUtilityPlugin extends Plugin
 		focusPending = false;
 		nexHpPercent = -1;
 		resetDrainRate();
+		stopReaverPrediction();
 		// Stop any low-stat flash that was scoped to the fight.
 		hpFlashing = false;
 		prayerFlashing = false;
@@ -189,21 +215,27 @@ public class NexLeechUtilityPlugin extends Plugin
 			return;
 		}
 
+		// NEX_BARRIER status: 3 = fight active, 2 = Nex dead (loot dropping), 0/1 = inactive/resetting.
 		int status = event.getValue();
-		if (status == 3 && lastNexStatus != 3)
+		boolean fightJustStarted = status == BARRIER_FIGHT_ACTIVE && lastNexStatus != BARRIER_FIGHT_ACTIVE;
+		boolean nexJustDied = lastNexStatus == BARRIER_FIGHT_ACTIVE && status == BARRIER_NEX_DEAD;
+		boolean fightAborted = (status == BARRIER_INACTIVE || status == BARRIER_RESETTING)
+			&& lastNexStatus != BARRIER_NEX_DEAD;
+
+		if (fightJustStarted)
 		{
 			startFight();
 		}
-		else if (lastNexStatus == 3 && status == 2)
+		else if (nexJustDied)
 		{
-			// Nex died and loot drops - optionally bring the client forward to grab it.
+			// Loot drops now - optionally bring the client forward to grab it.
 			if (config.focusOnKillEnd())
 			{
 				grabFocus();
 			}
 			endFight();
 		}
-		else if ((status == 0 || status == 1) && lastNexStatus != 2)
+		else if (fightAborted)
 		{
 			endFight();
 		}
@@ -222,18 +254,19 @@ public class NexLeechUtilityPlugin extends Plugin
 		}
 
 		String message = normalize(event.getMessage());
-		Minion warning = Minion.byWarningLine(message);
-		Minion activation = Minion.byActivationLine(message);
-		boolean death = message.equals("taste my wrath!");
+		Minion warningMinionLine = Minion.byWarningLine(message);
+		Minion activatedMinionLine = Minion.byActivationLine(message);
+		boolean isDeathCallout = message.equals(NEX_DEATH_LINE);
 
-		if (warning == null && activation == null && !death)
+		boolean isRecognizedCallout = warningMinionLine != null || activatedMinionLine != null || isDeathCallout;
+		if (!isRecognizedCallout)
 		{
 			return;
 		}
 
 		log.debug("NEX CHAT type={} raw=[{}]", type, event.getMessage());
 
-		if (death)
+		if (isDeathCallout)
 		{
 			endFight();
 			return;
@@ -244,13 +277,13 @@ public class NexLeechUtilityPlugin extends Plugin
 			startFight();
 		}
 
-		if (warning != null)
+		if (warningMinionLine != null)
 		{
-			onPhaseWarning(warning);
+			onPhaseWarning(warningMinionLine);
 		}
 		else
 		{
-			onMinionActivated(activation);
+			onMinionActivated(activatedMinionLine);
 		}
 	}
 
@@ -260,11 +293,22 @@ public class NexLeechUtilityPlugin extends Plugin
 		// A new phase begins: the previous minion is no longer attackable.
 		activeMinion = null;
 
+		// Blood phase begins -> reavers are coming; ice phase begins -> blood phase is over.
+		if (minion == Minion.CRUOR && config.predictReaverSpawns())
+		{
+			reaverPredictorActive = true;
+		}
+		else if (minion == Minion.GLACIES)
+		{
+			stopReaverPrediction();
+		}
+
 		// Alert for the minion we intend to leech (the starting minion or any after it),
 		// but only while we still need damage. Otherwise clear any stale warning.
-		if (config.showVulnerabilityWarning()
+		boolean shouldWarnForMinion = config.showVulnerabilityWarning()
 			&& !leechComplete
-			&& minion.atOrAfter(config.startingMinion()))
+			&& minion.atOrAfter(config.startingMinion());
+		if (shouldWarnForMinion)
 		{
 			warningMinion = minion;
 			// Focus is grabbed live once the DPS-based estimate drops within the lead time (onGameTick).
@@ -286,7 +330,8 @@ public class NexLeechUtilityPlugin extends Plugin
 		// passes, we leech enough, or the fight ends - so it stays visible.
 		activeMinion = minion;
 		// It became attackable before the estimate reached the lead time - grab focus now so it's never missed.
-		if (warningMinion == minion && focusPending)
+		boolean focusNotYetGrabbedForThisMinion = warningMinion == minion && focusPending;
+		if (focusNotYetGrabbedForThisMinion)
 		{
 			grabFocus();
 			focusPending = false;
@@ -337,6 +382,19 @@ public class NexLeechUtilityPlugin extends Plugin
 	}
 
 	@Subscribe
+	public void onNpcSpawned(NpcSpawned event)
+	{
+		int id = event.getNpc().getId();
+		// The in-fight blood reavers Nex summons are the "boss" variant (11294); 11293 are the
+		// ambient prison reavers. Once the real ones spawn, stop predicting (highlight takes over).
+		boolean summonedReaverSpawned = id == NpcID.NEX_PRISON_BLOOD_REAVER_BOSS;
+		if (summonedReaverSpawned)
+		{
+			stopReaverPrediction();
+		}
+	}
+
+	@Subscribe
 	public void onHitsplatApplied(HitsplatApplied event)
 	{
 		if (!inFight || !(event.getActor() instanceof NPC))
@@ -350,7 +408,8 @@ public class NexLeechUtilityPlugin extends Plugin
 			// Damage to Nex and her minions all counts towards loot eligibility.
 			ownDamageThisKill += hitsplat.getAmount();
 
-			if (!leechComplete && ownDamageThisKill >= MINIMUM_LEECH_DAMAGE)
+			boolean justQualifiedForLoot = !leechComplete && ownDamageThisKill >= MINIMUM_LEECH_DAMAGE;
+			if (justQualifiedForLoot)
 			{
 				leechComplete = true;
 				warningMinion = null;
@@ -372,12 +431,14 @@ public class NexLeechUtilityPlugin extends Plugin
 
 		if (skill == Skill.HITPOINTS)
 		{
-			if (current > config.lowHpThreshold())
+			boolean hpRecovered = current > config.lowHpThreshold();
+			boolean shouldStartHpFlash = shouldFlash() && !hpFlashing;
+			if (hpRecovered)
 			{
 				hpFlashing = false;
 				hpFlashTicksLeft = 0;
 			}
-			else if (shouldFlash() && !hpFlashing)
+			else if (shouldStartHpFlash)
 			{
 				hpFlashing = true;
 				hpFlashTicksLeft = flashDurationTicks();
@@ -385,12 +446,14 @@ public class NexLeechUtilityPlugin extends Plugin
 		}
 		else if (skill == Skill.PRAYER)
 		{
-			if (current > config.lowPrayerThreshold())
+			boolean prayerRecovered = current > config.lowPrayerThreshold();
+			boolean shouldStartPrayerFlash = shouldFlash() && !prayerFlashing;
+			if (prayerRecovered)
 			{
 				prayerFlashing = false;
 				prayerFlashTicksLeft = 0;
 			}
-			else if (shouldFlash() && !prayerFlashing)
+			else if (shouldStartPrayerFlash)
 			{
 				prayerFlashing = true;
 				prayerFlashTicksLeft = flashDurationTicks();
@@ -409,11 +472,19 @@ public class NexLeechUtilityPlugin extends Plugin
 			updateNexHp();
 		}
 
+		// Re-anchor the reaver prediction to Nex's live tile (follows her as she dashes).
+		if (reaverPredictorActive)
+		{
+			updateReaverPrediction();
+		}
+
 		// Grab focus once the live estimate drops within the configured lead time.
 		if (focusPending)
 		{
-			double estimate = getSecondsUntilAttackable();
-			if (estimate >= 0 && estimate <= config.focusLeadSeconds())
+			double secondsUntilAttackable = getSecondsUntilAttackable();
+			boolean withinFocusLeadTime = secondsUntilAttackable >= 0
+				&& secondsUntilAttackable <= config.focusLeadSeconds();
+			if (withinFocusLeadTime)
 			{
 				grabFocus();
 				focusPending = false;
@@ -473,13 +544,12 @@ public class NexLeechUtilityPlugin extends Plugin
 	/** Sample Nex's HP% this tick and recompute the smoothed drain rate (HP% per second). */
 	private void updateNexHp()
 	{
-		NPC nex = client.getTopLevelWorldView().npcs().stream()
-			.filter(n -> "Nex".equalsIgnoreCase(n.getName()))
-			.findFirst().orElse(null);
+		NPC nex = findNex();
+		int healthScale = nex == null ? 0 : nex.getHealthScale();
+		int healthRatio = nex == null ? -1 : nex.getHealthRatio();
 
-		int scale = nex == null ? 0 : nex.getHealthScale();
-		int ratio = nex == null ? -1 : nex.getHealthRatio();
-		if (scale <= 0 || ratio < 0)
+		boolean hpBarReadable = healthScale > 0 && healthRatio >= 0;
+		if (!hpBarReadable)
 		{
 			// HP bar not currently readable - keep the last value but stop trusting the rate.
 			nexHpPercent = -1;
@@ -487,7 +557,7 @@ public class NexLeechUtilityPlugin extends Plugin
 			return;
 		}
 
-		nexHpPercent = 100.0 * ratio / scale;
+		nexHpPercent = 100.0 * healthRatio / healthScale;
 
 		hpSamples[hpSampleHead % RATE_SAMPLES] = nexHpPercent;
 		hpSampleHead++;
@@ -496,7 +566,8 @@ public class NexLeechUtilityPlugin extends Plugin
 			hpSampleCount++;
 		}
 
-		if (hpSampleCount >= 2)
+		boolean haveEnoughSamplesForRate = hpSampleCount >= 2;
+		if (haveEnoughSamplesForRate)
 		{
 			double newest = hpSamples[(hpSampleHead - 1) % RATE_SAMPLES];
 			double oldest = hpSamples[(hpSampleHead - hpSampleCount) % RATE_SAMPLES];
@@ -512,6 +583,113 @@ public class NexLeechUtilityPlugin extends Plugin
 		drainPercentPerSec = 0;
 	}
 
+	private NPC findNex()
+	{
+		return client.getTopLevelWorldView().npcs().stream()
+			.filter(n -> "Nex".equalsIgnoreCase(n.getName()))
+			.findFirst().orElse(null);
+	}
+
+	private void stopReaverPrediction()
+	{
+		reaverPredictorActive = false;
+		predictedReaverTiles.clear();
+	}
+
+	/**
+	 * Re-anchor the predicted reaver tiles to Nex's current tile: the N most-likely offsets
+	 * (HOT first, then WARM) that land on walkable tiles. Follows Nex as she dashes.
+	 */
+	private void updateReaverPrediction()
+	{
+		predictedReaverTiles.clear();
+		NPC nex = findNex();
+		WorldPoint base = nex == null ? null : nex.getWorldLocation();
+		if (base == null)
+		{
+			return;
+		}
+		int desiredTileCount = config.reaverPredictCount();
+		for (int[] offset : ReaverSpawns.SLOTS)
+		{
+			if (predictedReaverTiles.size() >= desiredTileCount)
+			{
+				break;
+			}
+			WorldPoint slotTile = base.dx(offset[0]).dy(offset[1]);
+			// Clear-path clip: reavers only spawn where there's an open walkable line from Nex,
+			// so a slot in a blocked direction (e.g. across a wall when she's in a corridor) drops out.
+			if (clearPathFromNex(base, slotTile))
+			{
+				predictedReaverTiles.add(slotTile);
+			}
+		}
+	}
+
+	/** True if every tile on the straight line from {@code from} to {@code to} (inclusive) is walkable. */
+	private boolean clearPathFromNex(WorldPoint from, WorldPoint to)
+	{
+		int x = from.getX();
+		int y = from.getY();
+		while (x != to.getX() || y != to.getY())
+		{
+			x += Integer.signum(to.getX() - x);
+			y += Integer.signum(to.getY() - y);
+			if (!isWalkable(new WorldPoint(x, y, from.getPlane())))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** @return the predicted reaver tile nearest the local player (for distinct highlighting), or null. */
+	public WorldPoint nearestPredictedTile()
+	{
+		Player localPlayer = client.getLocalPlayer();
+		if (localPlayer == null || localPlayer.getWorldLocation() == null || predictedReaverTiles.isEmpty())
+		{
+			return null;
+		}
+		WorldPoint playerTile = localPlayer.getWorldLocation();
+		WorldPoint nearestTile = null;
+		int nearestDistance = Integer.MAX_VALUE;
+		for (WorldPoint tile : predictedReaverTiles)
+		{
+			int distance = playerTile.distanceTo(tile);
+			if (distance < nearestDistance)
+			{
+				nearestDistance = distance;
+				nearestTile = tile;
+			}
+		}
+		return nearestTile;
+	}
+
+	private boolean isWalkable(WorldPoint wp)
+	{
+		LocalPoint localPoint = LocalPoint.fromWorld(client, wp);
+		if (localPoint == null)
+		{
+			return false;
+		}
+		CollisionData[] collisionMaps = client.getCollisionMaps();
+		if (collisionMaps == null || collisionMaps[wp.getPlane()] == null)
+		{
+			return true; // can't verify - don't over-filter
+		}
+		int[][] flags = collisionMaps[wp.getPlane()].getFlags();
+		int sceneX = localPoint.getSceneX();
+		int sceneY = localPoint.getSceneY();
+		boolean sceneCoordsInBounds = sceneX >= 0 && sceneY >= 0
+			&& sceneX < flags.length && sceneY < flags.length;
+		if (!sceneCoordsInBounds)
+		{
+			return false;
+		}
+		return (flags[sceneX][sceneY] & CollisionDataFlag.BLOCK_MOVEMENT_FULL) == 0;
+	}
+
 	private HighlightedNpc highlight(NPC npc)
 	{
 		if (!inFight)
@@ -521,8 +699,8 @@ public class NexLeechUtilityPlugin extends Plugin
 
 		int id = npc.getId();
 
-		if (config.highlightBloodreavers()
-			&& (id == NpcID.NEX_PRISON_BLOOD_REAVER || id == NpcID.NEX_PRISON_BLOOD_REAVER_BOSS))
+		boolean isBloodReaver = id == NpcID.NEX_PRISON_BLOOD_REAVER || id == NpcID.NEX_PRISON_BLOOD_REAVER_BOSS;
+		if (config.highlightBloodreavers() && isBloodReaver)
 		{
 			Color color = config.bloodreaverColor();
 			return HighlightedNpc.builder()
@@ -581,9 +759,7 @@ public class NexLeechUtilityPlugin extends Plugin
 				return true;
 			}
 			int id = ((NPC) renderable).getId();
-			// Arceuus resurrection thralls (ghost/skeleton/zombie, lesser/superior/greater)
-			// are a contiguous id range; their display names don't contain "thrall".
-			return !(id >= NpcID.ARCEUUS_THRALL_GHOST_LESSER && id <= NpcID.ARCEUUS_THRALL_ZOMBIE_GREATER);
+			return !isArceuusThrall(id);
 		}
 
 		return true;
@@ -593,6 +769,15 @@ public class NexLeechUtilityPlugin extends Plugin
 	private boolean canHideNow()
 	{
 		return !cfgHideOnlyInRoom || inNexRoom;
+	}
+
+	/**
+	 * Arceuus resurrection thralls (ghost/skeleton/zombie, lesser/superior/greater) occupy a
+	 * contiguous npc id range; their display names don't contain "thrall", so we match by id.
+	 */
+	private static boolean isArceuusThrall(int npcId)
+	{
+		return npcId >= NpcID.ARCEUUS_THRALL_GHOST_LESSER && npcId <= NpcID.ARCEUUS_THRALL_ZOMBIE_GREATER;
 	}
 
 	private void refreshHideConfig()
@@ -637,9 +822,9 @@ public class NexLeechUtilityPlugin extends Plugin
 		Minion minion = Minion.byNpcId(npc.getId());
 		// De-prioritize "Attack" on a minion until it is the active (attackable) one,
 		// so you don't left-click an invulnerable minion. When green, left-click Attack returns.
-		if (minion != null
-			&& minion != activeMinion
-			&& "Attack".equalsIgnoreCase(Text.removeTags(entry.getOption())))
+		boolean isAttackOption = "Attack".equalsIgnoreCase(Text.removeTags(entry.getOption()));
+		boolean isInvulnerableMinion = minion != null && minion != activeMinion;
+		if (isInvulnerableMinion && isAttackOption)
 		{
 			entry.setDeprioritized(true);
 		}
