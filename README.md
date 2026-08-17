@@ -8,8 +8,9 @@ minimum **25 damage** with the least effort, while staying safe.
 - **Per-kill damage tracker** — an overlay showing your own damage and
   contribution this kill (e.g. `25 (0.5%)`), turning **green once you reach 25**
   (the loot-eligibility threshold), red until then. Also shows your **drop rate**
-  (1/N from contribution) and the **player count**, and stays visible after the
-  kill so you can read the result.
+  (1/N from contribution) and the **player count**. Stays visible after the kill
+  so you can read the result, hiding after a configurable timeout (default 5
+  minutes; 0 = keep until the next kill).
 - **Minion highlighting** — Fumus, Umbra, Cruor and Glacies are outlined: faint
   **red** while invulnerable, hard **green** the instant the game reports they've
   become attackable (driven by Nex's `"<minion>, don't fail me!"` callouts),

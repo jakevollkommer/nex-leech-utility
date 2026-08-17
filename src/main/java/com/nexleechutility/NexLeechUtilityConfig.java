@@ -80,6 +80,19 @@ public interface NexLeechUtilityConfig extends Config
 		return true;
 	}
 
+	@Range(max = 900)
+	@ConfigItem(
+		keyName = "damageOverlayTimeout",
+		name = "Hide after kill (seconds)",
+		description = "Hide the damage overlay this many seconds after the kill ends. 0 = keep it visible until the next kill.",
+		section = damageSection,
+		position = 1
+	)
+	default int damageOverlayTimeout()
+	{
+		return 300;
+	}
+
 	// ===== Minion highlighting =====
 	@ConfigItem(
 		keyName = "highlightMinions",

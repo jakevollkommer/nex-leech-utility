@@ -94,6 +94,8 @@ public class NexLeechUtilityPlugin extends Plugin
 
 	@Getter private boolean inFight;
 	@Getter private boolean everFought;
+	/** Wall-clock time the last fight ended, for the overlay's hide-after-kill timeout. */
+	@Getter private long lastFightEndMillis;
 	@Getter private int ownDamageThisKill;
 	@Getter private int totalDamageThisKill;
 	@Getter private int playerCount;
@@ -199,6 +201,7 @@ public class NexLeechUtilityPlugin extends Plugin
 	{
 		log.debug("Nex fight ended (own={}, total={})", ownDamageThisKill, totalDamageThisKill);
 		inFight = false;
+		lastFightEndMillis = System.currentTimeMillis();
 		activeMinion = null;
 		warningMinion = null;
 		clearPendingFocus();
