@@ -6,6 +6,7 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Range;
 
 @ConfigGroup(NexLeechUtilityConfig.GROUP)
 public interface NexLeechUtilityConfig extends Config
@@ -16,6 +17,12 @@ public interface NexLeechUtilityConfig extends Config
 	{
 		REQUEST,
 		FORCE
+	}
+
+	enum RayDirections
+	{
+		CARDINAL,
+		ALL_EIGHT
 	}
 
 	@ConfigSection(
@@ -52,6 +59,13 @@ public interface NexLeechUtilityConfig extends Config
 		position = 4
 	)
 	String playersSection = "players";
+
+	@ConfigSection(
+		name = "Nex paths",
+		description = "Paint the open (walkable) paths outward from Nex",
+		position = 5
+	)
+	String roomSection = "room";
 
 	// ===== Damage =====
 	@ConfigItem(
@@ -363,5 +377,56 @@ public interface NexLeechUtilityConfig extends Config
 	default boolean hidePlayersOnlyInRoom()
 	{
 		return true;
+	}
+
+	// ===== Room layout =====
+	@ConfigItem(
+		keyName = "showRoomRays",
+		name = "Show open paths from Nex",
+		description = "Paint the open (walkable) paths outward from Nex until they hit a wall.",
+		section = roomSection,
+		position = 0
+	)
+	default boolean showRoomRays()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "roomRayDirections",
+		name = "Directions",
+		description = "Trace only the four cardinal directions (N/S/E/W) or all eight (including diagonals).",
+		section = roomSection,
+		position = 1
+	)
+	default RayDirections roomRayDirections()
+	{
+		return RayDirections.ALL_EIGHT;
+	}
+
+	@Range(min = 1, max = 15)
+	@ConfigItem(
+		keyName = "roomRayLength",
+		name = "Ray length (tiles)",
+		description = "How many tiles to trace outward from Nex in each direction (stops early at a wall).",
+		section = roomSection,
+		position = 2
+	)
+	default int roomRayLength()
+	{
+		return 8;
+	}
+
+	@Alpha
+	@ConfigItem(
+		keyName = "roomRayColor",
+		name = "Ray color",
+		description = "Colour for the traced open tiles.",
+		section = roomSection,
+		position = 3
+	)
+	default Color roomRayColor()
+	{
+		return new Color(80, 180, 255, 120);
 	}
 }

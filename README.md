@@ -36,6 +36,9 @@ minimum **25 damage** with the least effort, while staying safe.
 - **Hide players / thralls** — entity-hider style; hide other players and/or
   reanimated thralls while inside the Nex room to cut clutter (your own character
   is kept).
+- **Nex paths** — optionally paint the open (walkable) paths outward from Nex in
+  each direction until they hit a wall, rendering the room's collision layout
+  around her position.
 
 ## Demo
 

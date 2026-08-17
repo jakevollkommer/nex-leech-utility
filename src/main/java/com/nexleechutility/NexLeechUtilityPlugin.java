@@ -2,6 +2,8 @@ package com.nexleechutility;
 
 import com.google.inject.Provides;
 import java.awt.Color;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
@@ -9,6 +11,8 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
+import net.runelite.api.CollisionData;
+import net.runelite.api.CollisionDataFlag;
 import net.runelite.api.Hitsplat;
 import net.runelite.api.HitsplatID;
 import net.runelite.api.NPC;
@@ -16,6 +20,8 @@ import net.runelite.api.Player;
 import net.runelite.api.Renderable;
 import net.runelite.api.Skill;
 import net.runelite.api.MenuEntry;
+import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.HitsplatApplied;
@@ -77,6 +83,14 @@ public class NexLeechUtilityPlugin extends Plugin
 	@Inject private NexLeechOverlay damageOverlay;
 	@Inject private NexWarningOverlay warningOverlay;
 	@Inject private NexLeechScreenFlashOverlay screenFlashOverlay;
+	@Inject private NexRoomRaysOverlay roomRaysOverlay;
+
+	/** Walkable tiles traced outward from Nex in each direction (the room's open arms). */
+	@Getter private final List<WorldPoint> openDirectionTiles = new ArrayList<>();
+
+	// The eight unit step directions; the cardinal subset is the first four.
+	private static final int[][] CARDINAL_STEPS = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
+	private static final int[][] DIAGONAL_STEPS = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
 
 	@Getter private boolean inFight;
 	@Getter private boolean everFought;
@@ -132,6 +146,7 @@ public class NexLeechUtilityPlugin extends Plugin
 		overlayManager.add(damageOverlay);
 		overlayManager.add(warningOverlay);
 		overlayManager.add(screenFlashOverlay);
+		overlayManager.add(roomRaysOverlay);
 		npcOverlayService.registerHighlighter(highlighter);
 		hooks.registerRenderableDrawListener(drawListener);
 
@@ -153,6 +168,8 @@ public class NexLeechUtilityPlugin extends Plugin
 		overlayManager.remove(damageOverlay);
 		overlayManager.remove(warningOverlay);
 		overlayManager.remove(screenFlashOverlay);
+		overlayManager.remove(roomRaysOverlay);
+		openDirectionTiles.clear();
 		inFight = false;
 		activeMinion = null;
 		warningMinion = null;
@@ -402,6 +419,8 @@ public class NexLeechUtilityPlugin extends Plugin
 			updateNexHp();
 		}
 
+		updateRoomRays();
+
 		// Grab focus once the live estimate drops within the configured lead time.
 		if (focusPending)
 		{
@@ -463,6 +482,52 @@ public class NexLeechUtilityPlugin extends Plugin
 	private int countPlayers()
 	{
 		return (int) client.getTopLevelWorldView().players().stream().count();
+	}
+
+	/**
+	 * Recompute the open-direction tiles: from Nex's current tile, step outward in each configured
+	 * direction and collect walkable tiles until a wall is hit. This is purely the room's collision
+	 * geometry relative to a visible entity - it does not predict, time, or mark any boss mechanic.
+	 */
+	private void updateRoomRays()
+	{
+		openDirectionTiles.clear();
+		if (!config.showRoomRays() || !inNexRoom)
+		{
+			return;
+		}
+
+		NPC nex = findNex();
+		WorldPoint base = nex == null ? null : nex.getWorldLocation();
+		if (base == null)
+		{
+			return;
+		}
+
+		int length = config.roomRayLength();
+		boolean diagonals = config.roomRayDirections() == NexLeechUtilityConfig.RayDirections.ALL_EIGHT;
+		traceRays(base, length, CARDINAL_STEPS);
+		if (diagonals)
+		{
+			traceRays(base, length, DIAGONAL_STEPS);
+		}
+	}
+
+	/** Step outward from {@code base} along each given direction, collecting tiles until a wall. */
+	private void traceRays(WorldPoint base, int length, int[][] steps)
+	{
+		for (int[] step : steps)
+		{
+			for (int dist = 1; dist <= length; dist++)
+			{
+				WorldPoint tile = base.dx(step[0] * dist).dy(step[1] * dist);
+				if (!isWalkable(tile))
+				{
+					break;
+				}
+				openDirectionTiles.add(tile);
+			}
+		}
 	}
 
 	private NPC findNex()
@@ -541,6 +606,30 @@ public class NexLeechUtilityPlugin extends Plugin
 		hpSampleHead = 0;
 		hpSampleCount = 0;
 		drainPercentPerSec = 0;
+	}
+
+	private boolean isWalkable(WorldPoint wp)
+	{
+		LocalPoint localPoint = LocalPoint.fromWorld(client, wp);
+		if (localPoint == null)
+		{
+			return false;
+		}
+		CollisionData[] collisionMaps = client.getCollisionMaps();
+		if (collisionMaps == null || collisionMaps[wp.getPlane()] == null)
+		{
+			return true; // can't verify - don't over-filter
+		}
+		int[][] flags = collisionMaps[wp.getPlane()].getFlags();
+		int sceneX = localPoint.getSceneX();
+		int sceneY = localPoint.getSceneY();
+		boolean sceneCoordsInBounds = sceneX >= 0 && sceneY >= 0
+			&& sceneX < flags.length && sceneY < flags.length;
+		if (!sceneCoordsInBounds)
+		{
+			return false;
+		}
+		return (flags[sceneX][sceneY] & CollisionDataFlag.BLOCK_MOVEMENT_FULL) == 0;
 	}
 
 	private HighlightedNpc highlight(NPC npc)
