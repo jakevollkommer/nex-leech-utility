@@ -25,8 +25,9 @@ class NexLeechOverlay extends OverlayPanel
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
-		// Keep showing the last kill's stats after the fight ends.
-		boolean haveStatsToShow = plugin.isInFight() || plugin.isEverFought();
+		// Keep showing the last kill's stats after the fight ends, optionally expiring
+		// after the configured timeout (0 = keep until the next kill).
+		boolean haveStatsToShow = plugin.isInFight() || (plugin.isEverFought() && !timedOut());
 		if (!config.showDamageOverlay() || !haveStatsToShow)
 		{
 			return null;
@@ -61,6 +62,16 @@ class NexLeechOverlay extends OverlayPanel
 			.build());
 
 		return super.render(graphics);
+	}
+
+	private boolean timedOut()
+	{
+		int timeoutSeconds = config.damageOverlayTimeout();
+		if (timeoutSeconds <= 0)
+		{
+			return false;
+		}
+		return System.currentTimeMillis() - plugin.getLastFightEndMillis() > timeoutSeconds * 1000L;
 	}
 
 	private static String fraction(int value)

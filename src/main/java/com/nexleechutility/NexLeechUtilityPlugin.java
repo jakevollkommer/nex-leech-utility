@@ -20,15 +20,14 @@ import net.runelite.api.Player;
 import net.runelite.api.Renderable;
 import net.runelite.api.Skill;
 import net.runelite.api.MenuEntry;
+import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.HitsplatApplied;
 import net.runelite.api.events.MenuEntryAdded;
-import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
-import net.runelite.api.coords.LocalPoint;
-import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.NpcID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.callback.ClientThread;
@@ -47,7 +46,7 @@ import net.runelite.client.util.Text;
 @Slf4j
 @PluginDescriptor(
 	name = "Nex Leech Utility",
-	description = "Leech helper for Nex: damage tracker, minion highlighting, vulnerability warnings, low-stat flashes",
+	description = "Leech helper for Nex: damage tracker, minion highlighting, attack alerts, low-stat flashes",
 	tags = {"nex", "leech", "minion", "contribution", "pvm"}
 )
 public class NexLeechUtilityPlugin extends Plugin
@@ -84,14 +83,19 @@ public class NexLeechUtilityPlugin extends Plugin
 	@Inject private NexLeechOverlay damageOverlay;
 	@Inject private NexWarningOverlay warningOverlay;
 	@Inject private NexLeechScreenFlashOverlay screenFlashOverlay;
-	@Inject private NexReaverPredictorOverlay reaverPredictorOverlay;
+	@Inject private NexRoomRaysOverlay roomRaysOverlay;
 
-	// Blood-reaver spawn prediction (active during the blood phase, before reavers actually spawn).
-	@Getter private boolean reaverPredictorActive;
-	@Getter private final List<WorldPoint> predictedReaverTiles = new ArrayList<>();
+	/** Walkable tiles traced outward from Nex in each direction (the room's open arms). */
+	@Getter private final List<WorldPoint> openDirectionTiles = new ArrayList<>();
+
+	// The eight unit step directions; the cardinal subset is the first four.
+	private static final int[][] CARDINAL_STEPS = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
+	private static final int[][] DIAGONAL_STEPS = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
 
 	@Getter private boolean inFight;
 	@Getter private boolean everFought;
+	/** Wall-clock time the last fight ended, for the overlay's hide-after-kill timeout. */
+	@Getter private long lastFightEndMillis;
 	@Getter private int ownDamageThisKill;
 	@Getter private int totalDamageThisKill;
 	@Getter private int playerCount;
@@ -101,15 +105,18 @@ public class NexLeechUtilityPlugin extends Plugin
 	/** The minion that can currently be attacked (drawn green); null if none. */
 	@Getter private Minion activeMinion;
 
-	/** The minion the warning overlay is currently alerting about; null if no warning. */
+	/** The attackable leech-target minion the alert overlay is calling out; null if no alert. */
 	@Getter private Minion warningMinion;
-	/** Whether a focus grab is still pending for the current warning. */
+
+	/** The upcoming leech-target minion a focus grab is pending for; null if none. */
+	private Minion focusMinion;
+	/** Whether a focus grab is still pending for {@link #focusMinion}. */
 	private boolean focusPending;
 
 	// Nex HP tracking. The minion attackable trigger is HP-gated, so we read Nex's live HP%
 	// and her drain rate to estimate seconds-to-attackable adaptively (DPS-independent).
 	private static final int RATE_SAMPLES = 10; // ~6s rolling window over game ticks
-	@Getter private double nexHpPercent = -1; // -1 = unknown / not readable
+	private double nexHpPercent = -1; // -1 = unknown / not readable
 	private final double[] hpSamples = new double[RATE_SAMPLES];
 	private int hpSampleHead;
 	private int hpSampleCount;
@@ -141,7 +148,7 @@ public class NexLeechUtilityPlugin extends Plugin
 		overlayManager.add(damageOverlay);
 		overlayManager.add(warningOverlay);
 		overlayManager.add(screenFlashOverlay);
-		overlayManager.add(reaverPredictorOverlay);
+		overlayManager.add(roomRaysOverlay);
 		npcOverlayService.registerHighlighter(highlighter);
 		hooks.registerRenderableDrawListener(drawListener);
 
@@ -163,11 +170,12 @@ public class NexLeechUtilityPlugin extends Plugin
 		overlayManager.remove(damageOverlay);
 		overlayManager.remove(warningOverlay);
 		overlayManager.remove(screenFlashOverlay);
-		overlayManager.remove(reaverPredictorOverlay);
+		overlayManager.remove(roomRaysOverlay);
+		openDirectionTiles.clear();
 		inFight = false;
 		activeMinion = null;
 		warningMinion = null;
-		focusPending = false;
+		clearPendingFocus();
 		hpFlashing = false;
 		prayerFlashing = false;
 	}
@@ -183,10 +191,9 @@ public class NexLeechUtilityPlugin extends Plugin
 		leechComplete = false;
 		activeMinion = null;
 		warningMinion = null;
-		focusPending = false;
+		clearPendingFocus();
 		nexHpPercent = -1;
 		resetDrainRate();
-		stopReaverPrediction();
 		npcOverlayService.rebuild();
 	}
 
@@ -194,12 +201,12 @@ public class NexLeechUtilityPlugin extends Plugin
 	{
 		log.debug("Nex fight ended (own={}, total={})", ownDamageThisKill, totalDamageThisKill);
 		inFight = false;
+		lastFightEndMillis = System.currentTimeMillis();
 		activeMinion = null;
 		warningMinion = null;
-		focusPending = false;
+		clearPendingFocus();
 		nexHpPercent = -1;
 		resetDrainRate();
-		stopReaverPrediction();
 		// Stop any low-stat flash that was scoped to the fight.
 		hpFlashing = false;
 		prayerFlashing = false;
@@ -279,7 +286,7 @@ public class NexLeechUtilityPlugin extends Plugin
 
 		if (warningMinionLine != null)
 		{
-			onPhaseWarning(warningMinionLine);
+			onPhaseChange(warningMinionLine);
 		}
 		else
 		{
@@ -287,111 +294,54 @@ public class NexLeechUtilityPlugin extends Plugin
 		}
 	}
 
-	private void onPhaseWarning(Minion minion)
+	/**
+	 * A new phase's pre-callout arrived: the previously attackable minion is no longer the
+	 * active target, so clear the green highlight and any standing alert. The on-screen alert
+	 * only appears once the game reports the minion has actually become attackable (see
+	 * {@link #onMinionActivated}), but a focus grab can be armed here: it fires once the live
+	 * estimate of seconds-to-attackable drops within the configured lead time (onGameTick).
+	 */
+	private void onPhaseChange(Minion minion)
 	{
-		log.debug("Phase warning: {} (target start={})", minion, config.startingMinion());
-		// A new phase begins: the previous minion is no longer attackable.
+		log.debug("Phase warning callout: {}", minion);
 		activeMinion = null;
+		warningMinion = null;
 
-		// Blood phase begins -> reavers are coming; ice phase begins -> blood phase is over.
-		if (minion == Minion.CRUOR && config.predictReaverSpawns())
+		boolean isLeechTarget = !leechComplete && minion.atOrAfter(config.startingMinion());
+		if (isLeechTarget && config.requestFocusOnWarning())
 		{
-			reaverPredictorActive = true;
-		}
-		else if (minion == Minion.GLACIES)
-		{
-			stopReaverPrediction();
-		}
-
-		// Alert for the minion we intend to leech (the starting minion or any after it),
-		// but only while we still need damage. Otherwise clear any stale warning.
-		boolean shouldWarnForMinion = config.showVulnerabilityWarning()
-			&& !leechComplete
-			&& minion.atOrAfter(config.startingMinion());
-		if (shouldWarnForMinion)
-		{
-			warningMinion = minion;
-			// Focus is grabbed live once the DPS-based estimate drops within the lead time (onGameTick).
-			focusPending = config.requestFocusOnWarning();
+			focusMinion = minion;
+			focusPending = true;
 		}
 		else
 		{
-			warningMinion = null;
-			focusPending = false;
+			clearPendingFocus();
 		}
-
 		npcOverlayService.rebuild();
 	}
 
 	private void onMinionActivated(Minion minion)
 	{
 		log.debug("Minion attackable: {}", minion);
-		// Keep the warning up (it switches to an "attack now" message) until the phase
-		// passes, we leech enough, or the fight ends - so it stays visible.
 		activeMinion = minion;
+
+		// Alert only for the minion we intend to leech - the starting minion or any after it -
+		// and only while we still need damage.
+		boolean isLeechTarget = !leechComplete && minion.atOrAfter(config.startingMinion());
+		warningMinion = (isLeechTarget && config.showVulnerabilityWarning()) ? minion : null;
 		// It became attackable before the estimate reached the lead time - grab focus now so it's never missed.
-		boolean focusNotYetGrabbedForThisMinion = warningMinion == minion && focusPending;
-		if (focusNotYetGrabbedForThisMinion)
+		if (focusPending && focusMinion == minion)
 		{
 			grabFocus();
-			focusPending = false;
 		}
+		clearPendingFocus();
 		npcOverlayService.rebuild();
 	}
 
-	/** @return true while the warning overlay should be shown. */
+	/** @return true while the "attack now" alert should be shown for an attackable target minion. */
 	public boolean isWarningActive()
 	{
 		return warningMinion != null;
-	}
-
-	/** @return true once the warned-about minion is attackable (overlay shows "attack now"). */
-	public boolean isWarningMinionAttackable()
-	{
-		return warningMinion != null && warningMinion == activeMinion;
-	}
-
-	/**
-	 * @return estimated seconds until the warned-about minion becomes attackable, derived live from
-	 *         Nex's current HP and her measured drain rate. 0 = at/past the threshold;
-	 *         -1 = unknown (HP unreadable, or Nex not losing HP / healing).
-	 */
-	public double getSecondsUntilAttackable()
-	{
-		if (warningMinion == null || nexHpPercent < 0)
-		{
-			return -1;
-		}
-		double gap = nexHpPercent - warningMinion.getThresholdPercent();
-		if (gap <= 0)
-		{
-			return 0;
-		}
-		if (drainPercentPerSec <= 0.01)
-		{
-			return -1;
-		}
-		return gap / drainPercentPerSec;
-	}
-
-	/** @return estimated game ticks until attackable (>= 0), or -1 if unknown. */
-	public int getTicksUntilAttackable()
-	{
-		double seconds = getSecondsUntilAttackable();
-		return seconds < 0 ? -1 : (int) Math.round(seconds / 0.6);
-	}
-
-	@Subscribe
-	public void onNpcSpawned(NpcSpawned event)
-	{
-		int id = event.getNpc().getId();
-		// The in-fight blood reavers Nex summons are the "boss" variant (11294); 11293 are the
-		// ambient prison reavers. Once the real ones spawn, stop predicting (highlight takes over).
-		boolean summonedReaverSpawned = id == NpcID.NEX_PRISON_BLOOD_REAVER_BOSS;
-		if (summonedReaverSpawned)
-		{
-			stopReaverPrediction();
-		}
 	}
 
 	@Subscribe
@@ -413,7 +363,7 @@ public class NexLeechUtilityPlugin extends Plugin
 			{
 				leechComplete = true;
 				warningMinion = null;
-				focusPending = false;
+				clearPendingFocus();
 			}
 		}
 
@@ -472,11 +422,7 @@ public class NexLeechUtilityPlugin extends Plugin
 			updateNexHp();
 		}
 
-		// Re-anchor the reaver prediction to Nex's live tile (follows her as she dashes).
-		if (reaverPredictorActive)
-		{
-			updateReaverPrediction();
-		}
+		updateRoomRays();
 
 		// Grab focus once the live estimate drops within the configured lead time.
 		if (focusPending)
@@ -541,6 +487,88 @@ public class NexLeechUtilityPlugin extends Plugin
 		return (int) client.getTopLevelWorldView().players().stream().count();
 	}
 
+	/**
+	 * Recompute the open-direction tiles: from Nex's current tile, step outward in each configured
+	 * direction and collect walkable tiles until a wall is hit. This is purely the room's collision
+	 * geometry relative to a visible entity - it does not predict, time, or mark any boss mechanic.
+	 */
+	private void updateRoomRays()
+	{
+		openDirectionTiles.clear();
+		if (!config.showRoomRays() || !inNexRoom)
+		{
+			return;
+		}
+
+		NPC nex = findNex();
+		WorldPoint base = nex == null ? null : nex.getWorldLocation();
+		if (base == null)
+		{
+			return;
+		}
+
+		int length = config.roomRayLength();
+		boolean diagonals = config.roomRayDirections() == NexLeechUtilityConfig.RayDirections.ALL_EIGHT;
+		traceRays(base, length, CARDINAL_STEPS);
+		if (diagonals)
+		{
+			traceRays(base, length, DIAGONAL_STEPS);
+		}
+	}
+
+	/** Step outward from {@code base} along each given direction, collecting tiles until a wall. */
+	private void traceRays(WorldPoint base, int length, int[][] steps)
+	{
+		for (int[] step : steps)
+		{
+			for (int dist = 1; dist <= length; dist++)
+			{
+				WorldPoint tile = base.dx(step[0] * dist).dy(step[1] * dist);
+				if (!isWalkable(tile))
+				{
+					break;
+				}
+				openDirectionTiles.add(tile);
+			}
+		}
+	}
+
+	private NPC findNex()
+	{
+		return client.getTopLevelWorldView().npcs().stream()
+			.filter(n -> "Nex".equalsIgnoreCase(n.getName()))
+			.findFirst().orElse(null);
+	}
+
+	private void clearPendingFocus()
+	{
+		focusMinion = null;
+		focusPending = false;
+	}
+
+	/**
+	 * @return estimated seconds until the pending-focus minion becomes attackable, derived live
+	 *         from Nex's current HP and her measured drain rate. 0 = at/past the threshold;
+	 *         -1 = unknown (HP unreadable, or Nex not losing HP / healing).
+	 */
+	private double getSecondsUntilAttackable()
+	{
+		if (focusMinion == null || nexHpPercent < 0)
+		{
+			return -1;
+		}
+		double gap = nexHpPercent - focusMinion.getThresholdPercent();
+		if (gap <= 0)
+		{
+			return 0;
+		}
+		if (drainPercentPerSec <= 0.01)
+		{
+			return -1;
+		}
+		return gap / drainPercentPerSec;
+	}
+
 	/** Sample Nex's HP% this tick and recompute the smoothed drain rate (HP% per second). */
 	private void updateNexHp()
 	{
@@ -581,89 +609,6 @@ public class NexLeechUtilityPlugin extends Plugin
 		hpSampleHead = 0;
 		hpSampleCount = 0;
 		drainPercentPerSec = 0;
-	}
-
-	private NPC findNex()
-	{
-		return client.getTopLevelWorldView().npcs().stream()
-			.filter(n -> "Nex".equalsIgnoreCase(n.getName()))
-			.findFirst().orElse(null);
-	}
-
-	private void stopReaverPrediction()
-	{
-		reaverPredictorActive = false;
-		predictedReaverTiles.clear();
-	}
-
-	/**
-	 * Re-anchor the predicted reaver tiles to Nex's current tile: the N most-likely offsets
-	 * (HOT first, then WARM) that land on walkable tiles. Follows Nex as she dashes.
-	 */
-	private void updateReaverPrediction()
-	{
-		predictedReaverTiles.clear();
-		NPC nex = findNex();
-		WorldPoint base = nex == null ? null : nex.getWorldLocation();
-		if (base == null)
-		{
-			return;
-		}
-		int desiredTileCount = config.reaverPredictCount();
-		for (int[] offset : ReaverSpawns.SLOTS)
-		{
-			if (predictedReaverTiles.size() >= desiredTileCount)
-			{
-				break;
-			}
-			WorldPoint slotTile = base.dx(offset[0]).dy(offset[1]);
-			// Clear-path clip: reavers only spawn where there's an open walkable line from Nex,
-			// so a slot in a blocked direction (e.g. across a wall when she's in a corridor) drops out.
-			if (clearPathFromNex(base, slotTile))
-			{
-				predictedReaverTiles.add(slotTile);
-			}
-		}
-	}
-
-	/** True if every tile on the straight line from {@code from} to {@code to} (inclusive) is walkable. */
-	private boolean clearPathFromNex(WorldPoint from, WorldPoint to)
-	{
-		int x = from.getX();
-		int y = from.getY();
-		while (x != to.getX() || y != to.getY())
-		{
-			x += Integer.signum(to.getX() - x);
-			y += Integer.signum(to.getY() - y);
-			if (!isWalkable(new WorldPoint(x, y, from.getPlane())))
-			{
-				return false;
-			}
-		}
-		return true;
-	}
-
-	/** @return the predicted reaver tile nearest the local player (for distinct highlighting), or null. */
-	public WorldPoint nearestPredictedTile()
-	{
-		Player localPlayer = client.getLocalPlayer();
-		if (localPlayer == null || localPlayer.getWorldLocation() == null || predictedReaverTiles.isEmpty())
-		{
-			return null;
-		}
-		WorldPoint playerTile = localPlayer.getWorldLocation();
-		WorldPoint nearestTile = null;
-		int nearestDistance = Integer.MAX_VALUE;
-		for (WorldPoint tile : predictedReaverTiles)
-		{
-			int distance = playerTile.distanceTo(tile);
-			if (distance < nearestDistance)
-			{
-				nearestDistance = distance;
-				nearestTile = tile;
-			}
-		}
-		return nearestTile;
 	}
 
 	private boolean isWalkable(WorldPoint wp)
@@ -759,7 +704,7 @@ public class NexLeechUtilityPlugin extends Plugin
 				return true;
 			}
 			int id = ((NPC) renderable).getId();
-			return !isArceuusThrall(id);
+			return !isThrall(id);
 		}
 
 		return true;
@@ -772,12 +717,15 @@ public class NexLeechUtilityPlugin extends Plugin
 	}
 
 	/**
-	 * Arceuus resurrection thralls (ghost/skeleton/zombie, lesser/superior/greater) occupy a
-	 * contiguous npc id range; their display names don't contain "thrall", so we match by id.
+	 * Resurrection thralls are matched by npc id (their display names don't contain "thrall"):
+	 * the base Arceuus ghost/skeleton/zombie variants plus the cosmetic reward skins - the
+	 * Deadman thralls and the league-reward imp thralls (Jagex's internal "DEBUG_THRALL" names).
 	 */
-	private static boolean isArceuusThrall(int npcId)
+	private static boolean isThrall(int npcId)
 	{
-		return npcId >= NpcID.ARCEUUS_THRALL_GHOST_LESSER && npcId <= NpcID.ARCEUUS_THRALL_ZOMBIE_GREATER;
+		return (npcId >= NpcID.ARCEUUS_THRALL_GHOST_LESSER && npcId <= NpcID.ARCEUUS_THRALL_ZOMBIE_GREATER)
+			|| (npcId >= NpcID.DEADMAN_THRALL_ZOMBIE_GREATER_ZUK && npcId <= NpcID.DEADMAN_THRALL_GHOSTLY_GREATER_WISP)
+			|| (npcId >= NpcID.DEBUG_THRALL_IMP_MAGIC && npcId <= NpcID.DEBUG_THRALL_IMP_MELEE);
 	}
 
 	private void refreshHideConfig()

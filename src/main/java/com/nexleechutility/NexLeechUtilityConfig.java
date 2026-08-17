@@ -19,10 +19,10 @@ public interface NexLeechUtilityConfig extends Config
 		FORCE
 	}
 
-	enum CountdownUnit
+	enum RayDirections
 	{
-		SECONDS,
-		TICKS
+		CARDINAL,
+		ALL_EIGHT
 	}
 
 	@ConfigSection(
@@ -40,8 +40,8 @@ public interface NexLeechUtilityConfig extends Config
 	String minionSection = "minions";
 
 	@ConfigSection(
-		name = "Vulnerability warning",
-		description = "Warn (and optionally grab focus) when your target minion is about to become attackable",
+		name = "Attack alert",
+		description = "Alert once your target minion becomes attackable, and optionally grab focus shortly before",
 		position = 2
 	)
 	String warningSection = "warning";
@@ -61,11 +61,11 @@ public interface NexLeechUtilityConfig extends Config
 	String playersSection = "players";
 
 	@ConfigSection(
-		name = "Blood reaver predictor",
-		description = "Predict and paint where blood reavers will spawn, based on Nex's position",
+		name = "Nex paths",
+		description = "Paint the open (walkable) paths outward from Nex",
 		position = 5
 	)
-	String reaverSection = "reavers";
+	String roomSection = "room";
 
 	// ===== Damage =====
 	@ConfigItem(
@@ -78,6 +78,19 @@ public interface NexLeechUtilityConfig extends Config
 	default boolean showDamageOverlay()
 	{
 		return true;
+	}
+
+	@Range(max = 900)
+	@ConfigItem(
+		keyName = "damageOverlayTimeout",
+		name = "Hide after kill (seconds)",
+		description = "Hide the damage overlay this many seconds after the kill ends. 0 = keep it visible until the next kill.",
+		section = damageSection,
+		position = 1
+	)
+	default int damageOverlayTimeout()
+	{
+		return 300;
 	}
 
 	// ===== Minion highlighting =====
@@ -168,41 +181,17 @@ public interface NexLeechUtilityConfig extends Config
 		return new Color(255, 140, 0, 200);
 	}
 
-	// ===== Vulnerability warning =====
+	// ===== Attack alert =====
 	@ConfigItem(
 		keyName = "showVulnerabilityWarning",
-		name = "Show warning overlay",
-		description = "Show a centred warning when your target minion is about to become attackable.",
+		name = "Show attack alert",
+		description = "Show a centred \"ATTACK\" alert once your target minion has become attackable.",
 		section = warningSection,
 		position = 0
 	)
 	default boolean showVulnerabilityWarning()
 	{
 		return true;
-	}
-
-	@ConfigItem(
-		keyName = "showAttackCountdown",
-		name = "Show attack countdown",
-		description = "Show a countdown until your target minion becomes attackable.",
-		section = warningSection,
-		position = 1
-	)
-	default boolean showAttackCountdown()
-	{
-		return true;
-	}
-
-	@ConfigItem(
-		keyName = "countdownUnit",
-		name = "Countdown unit",
-		description = "Show the countdown in real seconds or game ticks.",
-		section = warningSection,
-		position = 2
-	)
-	default CountdownUnit countdownUnit()
-	{
-		return CountdownUnit.SECONDS;
 	}
 
 	@ConfigItem(
@@ -403,55 +392,54 @@ public interface NexLeechUtilityConfig extends Config
 		return true;
 	}
 
-	// ===== Blood reaver predictor =====
+	// ===== Room layout =====
 	@ConfigItem(
-		keyName = "predictReaverSpawns",
-		name = "Predict blood reaver spawns",
-		description = "When the blood phase begins, paint the most likely blood-reaver spawn tiles (relative to Nex's position).",
-		section = reaverSection,
+		keyName = "showRoomRays",
+		name = "Show open paths from Nex",
+		description = "Paint the open (walkable) paths outward from Nex until they hit a wall.",
+		section = roomSection,
 		position = 0
 	)
-	default boolean predictReaverSpawns()
+	default boolean showRoomRays()
 	{
 		return false;
 	}
 
-	@Range(min = 1, max = 12)
 	@ConfigItem(
-		keyName = "reaverPredictCount",
-		name = "Tiles to show",
-		description = "How many of the most-likely spawn tiles to paint (~6 reavers spawn per kill).",
-		section = reaverSection,
+		keyName = "roomRayDirections",
+		name = "Directions",
+		description = "Trace only the four cardinal directions (N/S/E/W) or all eight (including diagonals).",
+		section = roomSection,
 		position = 1
 	)
-	default int reaverPredictCount()
+	default RayDirections roomRayDirections()
 	{
-		return 6;
+		return RayDirections.ALL_EIGHT;
 	}
 
-	@Alpha
+	@Range(min = 1, max = 15)
 	@ConfigItem(
-		keyName = "reaverPredictColor",
-		name = "Prediction color",
-		description = "Colour for predicted blood-reaver spawn tiles.",
-		section = reaverSection,
+		keyName = "roomRayLength",
+		name = "Ray length (tiles)",
+		description = "How many tiles to trace outward from Nex in each direction (stops early at a wall).",
+		section = roomSection,
 		position = 2
 	)
-	default Color reaverPredictColor()
+	default int roomRayLength()
 	{
-		return new Color(255, 40, 40, 160);
+		return 8;
 	}
 
 	@Alpha
 	@ConfigItem(
-		keyName = "reaverNearestColor",
-		name = "Nearest tile color",
-		description = "Colour for the predicted spawn tile nearest you (the one to run to).",
-		section = reaverSection,
+		keyName = "roomRayColor",
+		name = "Ray color",
+		description = "Colour for the traced open tiles.",
+		section = roomSection,
 		position = 3
 	)
-	default Color reaverNearestColor()
+	default Color roomRayColor()
 	{
-		return new Color(0, 255, 0, 200);
+		return new Color(80, 180, 255, 120);
 	}
 }
