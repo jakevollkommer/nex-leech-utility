@@ -35,8 +35,8 @@ minimum **25 damage** with the least effort, while staying safe.
   configurable thresholds (default 60 HP / 50 prayer). Stays up until the stat
   recovers, or for a set number of seconds.
 - **Hide players / thralls** — entity-hider style; hide other players and/or
-  reanimated thralls while inside the Nex room to cut clutter (your own character
-  is kept).
+  reanimated thralls (including cosmetic skins) while inside the Nex room to cut
+  clutter (your own character is kept).
 - **Nex paths** — optionally paint the open (walkable) paths outward from Nex in
   each direction until they hit a wall, rendering the room's collision layout
   around her position.

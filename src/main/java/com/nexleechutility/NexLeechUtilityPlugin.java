@@ -704,7 +704,7 @@ public class NexLeechUtilityPlugin extends Plugin
 				return true;
 			}
 			int id = ((NPC) renderable).getId();
-			return !isArceuusThrall(id);
+			return !isThrall(id);
 		}
 
 		return true;
@@ -717,12 +717,15 @@ public class NexLeechUtilityPlugin extends Plugin
 	}
 
 	/**
-	 * Arceuus resurrection thralls (ghost/skeleton/zombie, lesser/superior/greater) occupy a
-	 * contiguous npc id range; their display names don't contain "thrall", so we match by id.
+	 * Resurrection thralls are matched by npc id (their display names don't contain "thrall"):
+	 * the base Arceuus ghost/skeleton/zombie variants plus the cosmetic reward skins - the
+	 * Deadman thralls and the league-reward imp thralls (Jagex's internal "DEBUG_THRALL" names).
 	 */
-	private static boolean isArceuusThrall(int npcId)
+	private static boolean isThrall(int npcId)
 	{
-		return npcId >= NpcID.ARCEUUS_THRALL_GHOST_LESSER && npcId <= NpcID.ARCEUUS_THRALL_ZOMBIE_GREATER;
+		return (npcId >= NpcID.ARCEUUS_THRALL_GHOST_LESSER && npcId <= NpcID.ARCEUUS_THRALL_ZOMBIE_GREATER)
+			|| (npcId >= NpcID.DEADMAN_THRALL_ZOMBIE_GREATER_ZUK && npcId <= NpcID.DEADMAN_THRALL_GHOSTLY_GREATER_WISP)
+			|| (npcId >= NpcID.DEBUG_THRALL_IMP_MAGIC && npcId <= NpcID.DEBUG_THRALL_IMP_MELEE);
 	}
 
 	private void refreshHideConfig()
