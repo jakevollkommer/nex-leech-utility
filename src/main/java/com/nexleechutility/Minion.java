@@ -12,7 +12,7 @@ public enum Minion
 {
 	// thresholdPercent = Nex's HP% at which this minion becomes attackable. The trigger is HP-gated
 	// (DPS-independent), confirmed in-game and on the wiki: Nex has 3400 HP in 20% phase bands, and
-	// each minion goes live as she crosses its threshold. The seconds countdown is NOT a fixed
+	// each minion goes live as she crosses its threshold. The seconds estimate is NOT a fixed
 	// value - it's derived live from Nex's current HP and her measured drain rate, so it adapts to
 	// team DPS. The "<minion>, don't fail me!" chat line is the frame-exact confirmation.
 	FUMUS("Fumus", NpcID.NEX_SMOKEMAGE, "fill my soul with smoke!", "fumus, don't fail me!", 80),

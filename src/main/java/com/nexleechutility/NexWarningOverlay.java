@@ -13,9 +13,10 @@ import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 
 /**
- * Prominent centred warning, drawn in the upper-middle of the screen so it sits clear of the
- * Nex health bar (which occupies top-centre). Shows "&lt;MINION&gt; INCOMING" with a countdown,
- * then "ATTACK &lt;MINION&gt; NOW" once it becomes attackable.
+ * Centred "ATTACK &lt;MINION&gt;" alert, shown only once the game reports the target minion has
+ * actually become attackable. Drawn in the upper-middle of the screen so it sits clear of the Nex
+ * health bar (which occupies top-centre). It reflects current game state - there is no countdown
+ * or pre-announcement of the mechanic.
  */
 class NexWarningOverlay extends Overlay
 {
@@ -50,59 +51,13 @@ class NexWarningOverlay extends Overlay
 		}
 
 		String name = minion.getDisplayName().toUpperCase();
-		boolean attackable = plugin.isWarningMinionAttackable();
-
 		int width = client.getCanvasWidth();
 		int height = client.getCanvasHeight();
 		// Upper-middle, below the Nex health bar.
 		int centerY = (int) (height * 0.22);
 
-		// Single compact line: "UMBRA  4%" / "UMBRA  ~2s" (incoming) or "ATTACK UMBRA" (live).
-		if (attackable)
-		{
-			drawCentered(graphics, "ATTACK " + name, width, centerY, TITLE_FONT, Color.GREEN);
-		}
-		else
-		{
-			String proximity = proximity();
-			String label = proximity.isEmpty() ? name : name + "  " + proximity;
-			drawCentered(graphics, label, width, centerY, TITLE_FONT, Color.RED);
-		}
-
+		drawCentered(graphics, "ATTACK " + name, width, centerY, TITLE_FONT, Color.GREEN);
 		return null;
-	}
-
-	// The seconds estimate is only trustworthy in the final burst; above this it's the bursty
-	// held-flat HP bar inflating the number, so we fall back to HP proximity.
-	private static final double RELIABLE_SECONDS = 10.0;
-
-	/** Short proximity token: "" / "now" / "4%" (HP to go) / "~2s" (reliable final approach). */
-	private String proximity()
-	{
-		if (!config.showAttackCountdown())
-		{
-			return "";
-		}
-		double nexHp = plugin.getNexHpPercent();
-		Minion minion = plugin.getWarningMinion();
-		if (nexHp < 0 || minion == null)
-		{
-			return "";
-		}
-		double hpAboveThreshold = nexHp - minion.getThresholdPercent();
-		if (hpAboveThreshold <= 0)
-		{
-			return "now";
-		}
-		double seconds = plugin.getSecondsUntilAttackable();
-		boolean secondsEstimateReliable = seconds > 0 && seconds <= RELIABLE_SECONDS;
-		if (secondsEstimateReliable)
-		{
-			return config.countdownUnit() == NexLeechUtilityConfig.CountdownUnit.TICKS
-				? String.format("~%dt", plugin.getTicksUntilAttackable())
-				: String.format("~%.0fs", seconds);
-		}
-		return String.format("%.0f%%", hpAboveThreshold);
 	}
 
 	private static void drawCentered(Graphics2D graphics, String text, int width, int y, Font font, Color color)

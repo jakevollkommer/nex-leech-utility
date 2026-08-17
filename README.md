@@ -10,20 +10,21 @@ minimum **25 damage** with the least effort, while staying safe.
   (the loot-eligibility threshold), red until then. Also shows your **drop rate**
   (1/N from contribution) and the **player count**, and stays visible after the
   kill so you can read the result.
-- **Minion vulnerability highlighting** — Fumus, Umbra, Cruor and Glacies are
-  outlined: faint **red** while invulnerable, hard **green** the instant they
+- **Minion highlighting** — Fumus, Umbra, Cruor and Glacies are outlined: faint
+  **red** while invulnerable, hard **green** the instant the game reports they've
   become attackable (driven by Nex's `"<minion>, don't fail me!"` callouts),
   resetting when the kill ends. Colours are configurable.
-- **Starting minion + leech-rotation warnings** — pick the **minion you start
-  on** (e.g. Umbra to skip Fumus). A prominent centred warning announces when
-  that minion — or any later one, if you still need damage — is about to become
-  vulnerable, with a **countdown** (in seconds or game ticks), then switches to
-  "ATTACK NOW" when it's live. Warnings stop automatically once you've reached 25
-  damage.
+- **Attack alert** — pick the **minion you start on** (e.g. Umbra to skip Fumus).
+  Once that minion — or any later one, if you still need damage — becomes
+  attackable, a prominent centred **"ATTACK"** alert appears. It reflects current
+  game state (no countdown or pre-announcement) and stops automatically once
+  you've reached 25 damage.
 - **Focus grab** — optionally bring the client window to the front a configurable
-  number of seconds before your target minion becomes attackable (default 2, so
-  you don't miss the hit while tabbed out) and/or when the kill ends and loot
-  drops (so you can grab it). Request or force focus.
+  number of seconds *before* your target minion becomes attackable (so you don't
+  miss the hit while tabbed out), estimated live from Nex's HP drain — with a
+  guaranteed grab the moment it actually becomes attackable if the estimate runs
+  late — and/or when the kill ends and loot drops (so you can grab it). Request
+  or force focus.
 - **De-prioritized minion attack** — removes left-click *Attack* on a minion
   while it's invulnerable (so you can't misclick it); left-click *Attack* returns
   the moment it becomes attackable.

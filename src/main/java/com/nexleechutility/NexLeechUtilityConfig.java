@@ -6,7 +6,6 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
-import net.runelite.client.config.Range;
 
 @ConfigGroup(NexLeechUtilityConfig.GROUP)
 public interface NexLeechUtilityConfig extends Config
@@ -17,12 +16,6 @@ public interface NexLeechUtilityConfig extends Config
 	{
 		REQUEST,
 		FORCE
-	}
-
-	enum CountdownUnit
-	{
-		SECONDS,
-		TICKS
 	}
 
 	@ConfigSection(
@@ -40,8 +33,8 @@ public interface NexLeechUtilityConfig extends Config
 	String minionSection = "minions";
 
 	@ConfigSection(
-		name = "Vulnerability warning",
-		description = "Warn (and optionally grab focus) when your target minion is about to become attackable",
+		name = "Attack alert",
+		description = "Alert once your target minion becomes attackable, and optionally grab focus shortly before",
 		position = 2
 	)
 	String warningSection = "warning";
@@ -59,13 +52,6 @@ public interface NexLeechUtilityConfig extends Config
 		position = 4
 	)
 	String playersSection = "players";
-
-	@ConfigSection(
-		name = "Blood reaver predictor",
-		description = "Predict and paint where blood reavers will spawn, based on Nex's position",
-		position = 5
-	)
-	String reaverSection = "reavers";
 
 	// ===== Damage =====
 	@ConfigItem(
@@ -168,41 +154,17 @@ public interface NexLeechUtilityConfig extends Config
 		return new Color(255, 140, 0, 200);
 	}
 
-	// ===== Vulnerability warning =====
+	// ===== Attack alert =====
 	@ConfigItem(
 		keyName = "showVulnerabilityWarning",
-		name = "Show warning overlay",
-		description = "Show a centred warning when your target minion is about to become attackable.",
+		name = "Show attack alert",
+		description = "Show a centred \"ATTACK\" alert once your target minion has become attackable.",
 		section = warningSection,
 		position = 0
 	)
 	default boolean showVulnerabilityWarning()
 	{
 		return true;
-	}
-
-	@ConfigItem(
-		keyName = "showAttackCountdown",
-		name = "Show attack countdown",
-		description = "Show a countdown until your target minion becomes attackable.",
-		section = warningSection,
-		position = 1
-	)
-	default boolean showAttackCountdown()
-	{
-		return true;
-	}
-
-	@ConfigItem(
-		keyName = "countdownUnit",
-		name = "Countdown unit",
-		description = "Show the countdown in real seconds or game ticks.",
-		section = warningSection,
-		position = 2
-	)
-	default CountdownUnit countdownUnit()
-	{
-		return CountdownUnit.SECONDS;
 	}
 
 	@ConfigItem(
@@ -401,57 +363,5 @@ public interface NexLeechUtilityConfig extends Config
 	default boolean hidePlayersOnlyInRoom()
 	{
 		return true;
-	}
-
-	// ===== Blood reaver predictor =====
-	@ConfigItem(
-		keyName = "predictReaverSpawns",
-		name = "Predict blood reaver spawns",
-		description = "When the blood phase begins, paint the most likely blood-reaver spawn tiles (relative to Nex's position).",
-		section = reaverSection,
-		position = 0
-	)
-	default boolean predictReaverSpawns()
-	{
-		return false;
-	}
-
-	@Range(min = 1, max = 12)
-	@ConfigItem(
-		keyName = "reaverPredictCount",
-		name = "Tiles to show",
-		description = "How many of the most-likely spawn tiles to paint (~6 reavers spawn per kill).",
-		section = reaverSection,
-		position = 1
-	)
-	default int reaverPredictCount()
-	{
-		return 6;
-	}
-
-	@Alpha
-	@ConfigItem(
-		keyName = "reaverPredictColor",
-		name = "Prediction color",
-		description = "Colour for predicted blood-reaver spawn tiles.",
-		section = reaverSection,
-		position = 2
-	)
-	default Color reaverPredictColor()
-	{
-		return new Color(255, 40, 40, 160);
-	}
-
-	@Alpha
-	@ConfigItem(
-		keyName = "reaverNearestColor",
-		name = "Nearest tile color",
-		description = "Colour for the predicted spawn tile nearest you (the one to run to).",
-		section = reaverSection,
-		position = 3
-	)
-	default Color reaverNearestColor()
-	{
-		return new Color(0, 255, 0, 200);
 	}
 }
