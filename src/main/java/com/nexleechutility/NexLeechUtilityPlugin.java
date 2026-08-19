@@ -911,20 +911,26 @@ public class NexLeechUtilityPlugin extends Plugin
 		return SPEAKER_PREFIX.matcher(s).replaceFirst("").trim();
 	}
 
-	// The config panel cannot host real buttons, so "Buy me a coffee" is a checkbox that
-	// acts as a button: any click of the box, tick or untick, opens the Ko-fi page.
+	// The config panel cannot host real buttons, so the Feedback "buttons" are checkboxes
+	// that act as buttons: any click of the box, tick or untick, opens the link.
 	@Subscribe
-	public void onSupportButtonPressed(ConfigChanged event)
+	public void onFeedbackButtonPressed(ConfigChanged event)
 	{
-		boolean isSupportButtonClick = NexLeechUtilityConfig.GROUP.equals(event.getGroup())
-			&& "supportButton".equals(event.getKey())
-			&& event.getNewValue() != null;
-		if (!isSupportButtonClick)
+		if (!NexLeechUtilityConfig.GROUP.equals(event.getGroup()) || event.getNewValue() == null)
 		{
 			return;
 		}
 
-		LinkBrowser.browse("https://ko-fi.com/jakevollkommer");
+		if ("suggestButton".equals(event.getKey()))
+		{
+			LinkBrowser.browse("https://github.com/jakevollkommer/nex-leech-utility/issues");
+			return;
+		}
+
+		if ("supportButton".equals(event.getKey()))
+		{
+			LinkBrowser.browse("https://ko-fi.com/jakevollkommer");
+		}
 	}
 
 	@Provides
