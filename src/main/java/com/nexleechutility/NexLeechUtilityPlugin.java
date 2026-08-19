@@ -46,6 +46,9 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientUI;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.Text;
+import net.runelite.client.ui.ClientToolbar;
+import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.util.ImageUtil;
 
 @Slf4j
 @PluginDescriptor(
@@ -55,6 +58,11 @@ import net.runelite.client.util.Text;
 )
 public class NexLeechUtilityPlugin extends Plugin
 {
+	@Inject
+	private ClientToolbar clientToolbar;
+
+	private NavigationButton navigationButton;
+
 	/** Minimum damage required to qualify for loot at Nex. */
 	static final int MINIMUM_LEECH_DAMAGE = 25;
 	/** Nex's per-kill unique roll for 100% contribution (1/43). */
@@ -170,6 +178,14 @@ public class NexLeechUtilityPlugin extends Plugin
 		npcOverlayService.registerHighlighter(highlighter);
 		hooks.registerRenderableDrawListener(drawListener);
 
+		navigationButton = NavigationButton.builder()
+			.tooltip("Nex Leech Utility")
+			.icon(ImageUtil.loadImageResource(NexLeechUtilityPlugin.class, "panel_icon.png"))
+			.priority(9)
+			.panel(new NexLeechUtilityPanel())
+			.build();
+		clientToolbar.addNavigation(navigationButton);
+
 		clientThread.invokeLater(() ->
 		{
 			// Reloaded mid-fight (e.g. plugin enabled during a kill) - pick up the active fight.
@@ -185,6 +201,7 @@ public class NexLeechUtilityPlugin extends Plugin
 	{
 		npcOverlayService.unregisterHighlighter(highlighter);
 		hooks.unregisterRenderableDrawListener(drawListener);
+		clientToolbar.removeNavigation(navigationButton);
 		overlayManager.remove(damageOverlay);
 		overlayManager.remove(warningOverlay);
 		overlayManager.remove(screenFlashOverlay);
