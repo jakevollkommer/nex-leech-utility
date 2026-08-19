@@ -67,6 +67,13 @@ public interface NexLeechUtilityConfig extends Config
 	)
 	String roomSection = "room";
 
+	@ConfigSection(
+		name = "Door entry",
+		description = "Guard against entering the Nex fight on the wrong world",
+		position = 6
+	)
+	String entrySection = "entry";
+
 	// ===== Damage =====
 	@ConfigItem(
 		keyName = "showDamageOverlay",
@@ -441,5 +448,32 @@ public interface NexLeechUtilityConfig extends Config
 	default Color roomRayColor()
 	{
 		return new Color(80, 180, 255, 120);
+	}
+
+	// ===== Door entry =====
+	@ConfigItem(
+		keyName = "blockEntryOffMassWorlds",
+		name = "Disable entry off mass worlds",
+		description = "Remove left-click entry through the Nex fight barrier unless you are on one of the "
+			+ "mass worlds listed below, so you can't accidentally start a fight on a normal world. "
+			+ "Right-click still lets you enter deliberately.",
+		section = entrySection,
+		position = 0
+	)
+	default boolean blockEntryOffMassWorlds()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "massWorlds",
+		name = "Mass worlds",
+		description = "Comma-separated world numbers where door entry stays enabled (e.g. 332).",
+		section = entrySection,
+		position = 1
+	)
+	default String massWorlds()
+	{
+		return "332";
 	}
 }

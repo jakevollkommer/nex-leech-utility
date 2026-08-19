@@ -3,7 +3,9 @@ package com.nexleechutility;
 import com.google.inject.Provides;
 import java.awt.Color;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
@@ -15,6 +17,7 @@ import net.runelite.api.CollisionData;
 import net.runelite.api.CollisionDataFlag;
 import net.runelite.api.Hitsplat;
 import net.runelite.api.HitsplatID;
+import net.runelite.api.MenuAction;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;
 import net.runelite.api.Renderable;
@@ -29,6 +32,7 @@ import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.gameval.NpcID;
+import net.runelite.api.gameval.ObjectID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.callback.Hooks;
@@ -60,6 +64,17 @@ public class NexLeechUtilityPlugin extends Plugin
 
 	/** Normalised chat line Nex speaks when she dies, ending the fight. */
 	private static final String NEX_DEATH_LINE = "taste my wrath!";
+
+	// The barriers that lead into the Nex fight (outer + inner, with their private/busy variants).
+	private static final Set<Integer> NEX_ENTRY_BARRIER_IDS = Set.of(
+		ObjectID.NEX_FIGHT_BARRIER_OUTER,
+		ObjectID.NEX_FIGHT_BARRIER_OUTER_PRIV,
+		ObjectID.NEX_FIGHT_BARRIER_OUTER_BUSY,
+		ObjectID.NEX_FIGHT_BARRIER_OUTER_PRIV_BUSY,
+		ObjectID.NEX_FIGHT_BARRIER,
+		ObjectID.NEX_FIGHT_BARRIER_BUSY,
+		ObjectID.NEX_FIGHT_BARRIER_INNER_BUSY
+	);
 
 	// Values of the NEX_BARRIER varbit, which tracks the state of the prison barrier / fight.
 	private static final int BARRIER_INACTIVE = 0;
@@ -137,6 +152,9 @@ public class NexLeechUtilityPlugin extends Plugin
 	private boolean cfgHidePlayers;
 	private boolean cfgHideThralls;
 	private boolean cfgHideOnlyInRoom;
+
+	/** Parsed "Mass worlds" config, refreshed on config change. */
+	private final Set<Integer> massWorlds = new HashSet<>();
 
 	private final Function<NPC, HighlightedNpc> highlighter = this::highlight;
 	private final Hooks.RenderableDrawListener drawListener = this::shouldDraw;
@@ -733,6 +751,23 @@ public class NexLeechUtilityPlugin extends Plugin
 		cfgHidePlayers = config.hidePlayers();
 		cfgHideThralls = config.hideThralls();
 		cfgHideOnlyInRoom = config.hidePlayersOnlyInRoom();
+		refreshMassWorlds();
+	}
+
+	private void refreshMassWorlds()
+	{
+		massWorlds.clear();
+		for (String token : config.massWorlds().split("[,\\s]+"))
+		{
+			try
+			{
+				massWorlds.add(Integer.parseInt(token.trim()));
+			}
+			catch (NumberFormatException ignored)
+			{
+				// Skip anything that isn't a world number.
+			}
+		}
 	}
 
 	private boolean isInNexRoom()
@@ -755,6 +790,12 @@ public class NexLeechUtilityPlugin extends Plugin
 	@Subscribe
 	public void onMenuEntryAdded(MenuEntryAdded event)
 	{
+		maybeDeprioritizeMinionAttack(event);
+		maybeDeprioritizeDoorEntry(event);
+	}
+
+	private void maybeDeprioritizeMinionAttack(MenuEntryAdded event)
+	{
 		if (!config.deprioritizeMinionAttack())
 		{
 			return;
@@ -775,6 +816,40 @@ public class NexLeechUtilityPlugin extends Plugin
 		if (isInvulnerableMinion && isAttackOption)
 		{
 			entry.setDeprioritized(true);
+		}
+	}
+
+	/**
+	 * De-prioritize the fight barrier's left-click entry option unless the current world is one
+	 * of the configured mass worlds, so a misclick can't start (or join) a fight on a normal
+	 * world. Right-click still enters deliberately.
+	 */
+	private void maybeDeprioritizeDoorEntry(MenuEntryAdded event)
+	{
+		if (!config.blockEntryOffMassWorlds() || massWorlds.contains(client.getWorld()))
+		{
+			return;
+		}
+
+		MenuEntry entry = event.getMenuEntry();
+		if (isObjectAction(entry.getType()) && NEX_ENTRY_BARRIER_IDS.contains(event.getIdentifier()))
+		{
+			entry.setDeprioritized(true);
+		}
+	}
+
+	private static boolean isObjectAction(MenuAction action)
+	{
+		switch (action)
+		{
+			case GAME_OBJECT_FIRST_OPTION:
+			case GAME_OBJECT_SECOND_OPTION:
+			case GAME_OBJECT_THIRD_OPTION:
+			case GAME_OBJECT_FOURTH_OPTION:
+			case GAME_OBJECT_FIFTH_OPTION:
+				return true;
+			default:
+				return false;
 		}
 	}
 
