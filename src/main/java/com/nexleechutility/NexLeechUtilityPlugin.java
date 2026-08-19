@@ -52,13 +52,10 @@ import net.runelite.client.util.LinkBrowser;
 @PluginDescriptor(
 	name = "Nex Leech Utility",
 	description = "Leech helper for Nex: damage tracker, minion highlighting, attack alerts, low-stat flashes",
-	tags = {"nex", "leech", "minion", "contribution", "pvm"}
+	tags = {"jake", "nex", "leech", "minion", "minions", "contribution", "damage", "tracker", "pvm", "boss", "gwd", "godwars", "ancient", "prison", "zaros", "alert", "flash"}
 )
 public class NexLeechUtilityPlugin extends Plugin
 {
-	@Inject
-	private ConfigManager configManager;
-
 	/** Minimum damage required to qualify for loot at Nex. */
 	static final int MINIMUM_LEECH_DAMAGE = 25;
 	/** Nex's per-kill unique roll for 100% contribution (1/43). */
@@ -915,20 +912,19 @@ public class NexLeechUtilityPlugin extends Plugin
 	}
 
 	// The config panel cannot host real buttons, so "Buy me a coffee" is a checkbox that
-	// opens the Ko-fi page when ticked and immediately unticks itself.
+	// acts as a button: any click of the box, tick or untick, opens the Ko-fi page.
 	@Subscribe
 	public void onSupportButtonPressed(ConfigChanged event)
 	{
-		boolean isSupportButtonTick = NexLeechUtilityConfig.GROUP.equals(event.getGroup())
+		boolean isSupportButtonClick = NexLeechUtilityConfig.GROUP.equals(event.getGroup())
 			&& "supportButton".equals(event.getKey())
-			&& Boolean.parseBoolean(event.getNewValue());
-		if (!isSupportButtonTick)
+			&& event.getNewValue() != null;
+		if (!isSupportButtonClick)
 		{
 			return;
 		}
 
 		LinkBrowser.browse("https://ko-fi.com/jakevollkommer");
-		configManager.setConfiguration(NexLeechUtilityConfig.GROUP, "supportButton", false);
 	}
 
 	@Provides
