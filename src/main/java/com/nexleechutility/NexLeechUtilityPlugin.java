@@ -46,6 +46,7 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientUI;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.Text;
+import net.runelite.client.util.LinkBrowser;
 
 @Slf4j
 @PluginDescriptor(
@@ -55,6 +56,9 @@ import net.runelite.client.util.Text;
 )
 public class NexLeechUtilityPlugin extends Plugin
 {
+	@Inject
+	private ConfigManager configManager;
+
 	/** Minimum damage required to qualify for loot at Nex. */
 	static final int MINIMUM_LEECH_DAMAGE = 25;
 	/** Nex's per-kill unique roll for 100% contribution (1/43). */
@@ -908,6 +912,23 @@ public class NexLeechUtilityPlugin extends Plugin
 		// Precompiled patterns avoid recompiling a regex on every call.
 		String s = HTML_TAG.matcher(raw.toLowerCase()).replaceAll("");
 		return SPEAKER_PREFIX.matcher(s).replaceFirst("").trim();
+	}
+
+	// The config panel cannot host real buttons, so "Buy me a coffee" is a checkbox that
+	// opens the Ko-fi page when ticked and immediately unticks itself.
+	@Subscribe
+	public void onSupportButtonPressed(ConfigChanged event)
+	{
+		boolean isSupportButtonTick = NexLeechUtilityConfig.GROUP.equals(event.getGroup())
+			&& "supportButton".equals(event.getKey())
+			&& Boolean.parseBoolean(event.getNewValue());
+		if (!isSupportButtonTick)
+		{
+			return;
+		}
+
+		LinkBrowser.browse("https://ko-fi.com/jakevollkommer");
+		configManager.setConfiguration(NexLeechUtilityConfig.GROUP, "supportButton", false);
 	}
 
 	@Provides
