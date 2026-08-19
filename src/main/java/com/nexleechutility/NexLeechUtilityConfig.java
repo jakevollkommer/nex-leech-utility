@@ -476,4 +476,15 @@ public interface NexLeechUtilityConfig extends Config
 	{
 		return "332";
 	}
+
+	@ConfigItem(
+		keyName = "supportLink",
+		name = "Buy me a coffee",
+		description = "Enjoying the plugin? Support development at this link",
+		position = 99
+	)
+	default String supportLink()
+	{
+		return "ko-fi.com/jakevollkommer";
+	}
 }
