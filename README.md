@@ -40,6 +40,10 @@ minimum **25 damage** with the least effort, while staying safe.
 - **Nex paths** — optionally paint the open (walkable) paths outward from Nex in
   each direction until they hit a wall, rendering the room's collision layout
   around her position.
+- **Disable entry off mass worlds** — optionally remove left-click entry through
+  the Nex fight barrier unless you're on one of your configured mass worlds
+  (default 332), so you can't accidentally start a fight on a normal world.
+  Right-click still enters deliberately.
 
 ## Demo
 
