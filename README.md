@@ -20,12 +20,13 @@ minimum **25 damage** with the least effort, while staying safe.
   attackable, a prominent centred **"ATTACK"** alert appears. It reflects current
   game state (no countdown or pre-announcement) and stops automatically once
   you've reached 25 damage.
-- **Focus grab** — optionally bring the client window to the front a configurable
+- **Notifications** — optionally get a RuneLite notification a configurable
   number of seconds *before* your target minion becomes attackable (so you don't
   miss the hit while tabbed out), estimated live from Nex's HP drain — with a
-  guaranteed grab the moment it actually becomes attackable if the estimate runs
-  late — and/or when the kill ends and loot drops (so you can grab it). Request
-  or force focus.
+  guaranteed notification the moment it actually becomes attackable if the
+  estimate runs late — and/or when the kill ends and loot drops (so you can grab
+  it). Each notification is fully customizable in its settings, including
+  requesting or forcing client focus.
 - **De-prioritized minion attack** — removes left-click *Attack* on a minion
   while it's invulnerable (so you can't misclick it); left-click *Attack* returns
   the moment it becomes attackable.

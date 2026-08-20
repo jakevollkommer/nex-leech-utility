@@ -34,6 +34,7 @@ import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.gameval.NpcID;
 import net.runelite.api.gameval.ObjectID;
 import net.runelite.api.gameval.VarbitID;
+import net.runelite.client.Notifier;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.callback.Hooks;
 import net.runelite.client.config.ConfigManager;
@@ -43,7 +44,6 @@ import net.runelite.client.game.npcoverlay.HighlightedNpc;
 import net.runelite.client.game.npcoverlay.NpcOverlayService;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.ui.ClientUI;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.Text;
 import net.runelite.client.util.LinkBrowser;
@@ -93,7 +93,7 @@ public class NexLeechUtilityPlugin extends Plugin
 	@Inject private ClientThread clientThread;
 	@Inject private OverlayManager overlayManager;
 	@Inject private NpcOverlayService npcOverlayService;
-	@Inject private ClientUI clientUI;
+	@Inject private Notifier notifier;
 	@Inject private Hooks hooks;
 	@Inject private NexLeechUtilityConfig config;
 	@Inject private NexLeechOverlay damageOverlay;
@@ -124,10 +124,10 @@ public class NexLeechUtilityPlugin extends Plugin
 	/** The attackable leech-target minion the alert overlay is calling out; null if no alert. */
 	@Getter private Minion warningMinion;
 
-	/** The upcoming leech-target minion a focus grab is pending for; null if none. */
-	private Minion focusMinion;
-	/** Whether a focus grab is still pending for {@link #focusMinion}. */
-	private boolean focusPending;
+	/** The upcoming leech-target minion an attack notification is pending for; null if none. */
+	private Minion notifyMinion;
+	/** Whether an attack notification is still pending for {@link #notifyMinion}. */
+	private boolean notifyPending;
 
 	// Nex HP tracking. The minion attackable trigger is HP-gated, so we read Nex's live HP%
 	// and her drain rate to estimate seconds-to-attackable adaptively (DPS-independent).
@@ -194,7 +194,7 @@ public class NexLeechUtilityPlugin extends Plugin
 		inFight = false;
 		activeMinion = null;
 		warningMinion = null;
-		clearPendingFocus();
+		clearPendingNotify();
 		hpFlashing = false;
 		prayerFlashing = false;
 	}
@@ -210,7 +210,7 @@ public class NexLeechUtilityPlugin extends Plugin
 		leechComplete = false;
 		activeMinion = null;
 		warningMinion = null;
-		clearPendingFocus();
+		clearPendingNotify();
 		nexHpPercent = -1;
 		resetDrainRate();
 		npcOverlayService.rebuild();
@@ -223,7 +223,7 @@ public class NexLeechUtilityPlugin extends Plugin
 		lastFightEndMillis = System.currentTimeMillis();
 		activeMinion = null;
 		warningMinion = null;
-		clearPendingFocus();
+		clearPendingNotify();
 		nexHpPercent = -1;
 		resetDrainRate();
 		// Stop any low-stat flash that was scoped to the fight.
@@ -254,11 +254,8 @@ public class NexLeechUtilityPlugin extends Plugin
 		}
 		else if (nexJustDied)
 		{
-			// Loot drops now - optionally bring the client forward to grab it.
-			if (config.focusOnKillEnd())
-			{
-				grabFocus();
-			}
+			// Loot drops now - the notification (if enabled) lets the user pull the client forward.
+			notifier.notify(config.killEndNotification(), "Nex has died - loot is dropping");
 			endFight();
 		}
 		else if (fightAborted)
@@ -317,8 +314,8 @@ public class NexLeechUtilityPlugin extends Plugin
 	 * A new phase's pre-callout arrived: the previously attackable minion is no longer the
 	 * active target, so clear the green highlight and any standing alert. The on-screen alert
 	 * only appears once the game reports the minion has actually become attackable (see
-	 * {@link #onMinionActivated}), but a focus grab can be armed here: it fires once the live
-	 * estimate of seconds-to-attackable drops within the configured lead time (onGameTick).
+	 * {@link #onMinionActivated}), but the attack notification can be armed here: it fires once
+	 * the live estimate of seconds-to-attackable drops within the configured lead time (onGameTick).
 	 */
 	private void onPhaseChange(Minion minion)
 	{
@@ -327,14 +324,14 @@ public class NexLeechUtilityPlugin extends Plugin
 		warningMinion = null;
 
 		boolean isLeechTarget = !leechComplete && minion.atOrAfter(config.startingMinion());
-		if (isLeechTarget && config.requestFocusOnWarning())
+		if (isLeechTarget && config.attackNotification().isEnabled())
 		{
-			focusMinion = minion;
-			focusPending = true;
+			notifyMinion = minion;
+			notifyPending = true;
 		}
 		else
 		{
-			clearPendingFocus();
+			clearPendingNotify();
 		}
 		npcOverlayService.rebuild();
 	}
@@ -348,12 +345,12 @@ public class NexLeechUtilityPlugin extends Plugin
 		// and only while we still need damage.
 		boolean isLeechTarget = !leechComplete && minion.atOrAfter(config.startingMinion());
 		warningMinion = (isLeechTarget && config.showVulnerabilityWarning()) ? minion : null;
-		// It became attackable before the estimate reached the lead time - grab focus now so it's never missed.
-		if (focusPending && focusMinion == minion)
+		// It became attackable before the estimate reached the lead time - notify now so it's never missed.
+		if (notifyPending && notifyMinion == minion)
 		{
-			grabFocus();
+			notifyAttack(minion);
 		}
-		clearPendingFocus();
+		clearPendingNotify();
 		npcOverlayService.rebuild();
 	}
 
@@ -382,7 +379,7 @@ public class NexLeechUtilityPlugin extends Plugin
 			{
 				leechComplete = true;
 				warningMinion = null;
-				clearPendingFocus();
+				clearPendingNotify();
 			}
 		}
 
@@ -443,16 +440,16 @@ public class NexLeechUtilityPlugin extends Plugin
 
 		updateRoomRays();
 
-		// Grab focus once the live estimate drops within the configured lead time.
-		if (focusPending)
+		// Notify once the live estimate drops within the configured lead time.
+		if (notifyPending)
 		{
 			double secondsUntilAttackable = getSecondsUntilAttackable();
-			boolean withinFocusLeadTime = secondsUntilAttackable >= 0
-				&& secondsUntilAttackable <= config.focusLeadSeconds();
-			if (withinFocusLeadTime)
+			boolean withinNotifyLeadTime = secondsUntilAttackable >= 0
+				&& secondsUntilAttackable <= config.notifyLeadSeconds();
+			if (withinNotifyLeadTime)
 			{
-				grabFocus();
-				focusPending = false;
+				notifyAttack(notifyMinion);
+				notifyPending = false;
 			}
 		}
 
@@ -470,23 +467,18 @@ public class NexLeechUtilityPlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		if (NexLeechUtilityConfig.GROUP.equals(event.getGroup()))
+		if (!NexLeechUtilityConfig.GROUP.equals(event.getGroup()))
 		{
-			refreshHideConfig();
-			npcOverlayService.rebuild();
+			return;
 		}
+		refreshHideConfig();
+		npcOverlayService.rebuild();
+		handleFeedbackButton(event);
 	}
 
-	private void grabFocus()
+	private void notifyAttack(Minion minion)
 	{
-		if (config.focusMode() == NexLeechUtilityConfig.FocusMode.FORCE)
-		{
-			clientUI.forceFocus();
-		}
-		else
-		{
-			clientUI.requestFocus();
-		}
+		notifier.notify(config.attackNotification(), minion.getDisplayName() + " is about to become attackable");
 	}
 
 	private boolean shouldFlash()
@@ -559,24 +551,24 @@ public class NexLeechUtilityPlugin extends Plugin
 			.findFirst().orElse(null);
 	}
 
-	private void clearPendingFocus()
+	private void clearPendingNotify()
 	{
-		focusMinion = null;
-		focusPending = false;
+		notifyMinion = null;
+		notifyPending = false;
 	}
 
 	/**
-	 * @return estimated seconds until the pending-focus minion becomes attackable, derived live
+	 * @return estimated seconds until the pending-notify minion becomes attackable, derived live
 	 *         from Nex's current HP and her measured drain rate. 0 = at/past the threshold;
 	 *         -1 = unknown (HP unreadable, or Nex not losing HP / healing).
 	 */
 	private double getSecondsUntilAttackable()
 	{
-		if (focusMinion == null || nexHpPercent < 0)
+		if (notifyMinion == null || nexHpPercent < 0)
 		{
 			return -1;
 		}
-		double gap = nexHpPercent - focusMinion.getThresholdPercent();
+		double gap = nexHpPercent - notifyMinion.getThresholdPercent();
 		if (gap <= 0)
 		{
 			return 0;
@@ -913,10 +905,9 @@ public class NexLeechUtilityPlugin extends Plugin
 
 	// The config panel cannot host real buttons, so the Feedback "buttons" are checkboxes
 	// that act as buttons: any click of the box, tick or untick, opens the link.
-	@Subscribe
-	public void onFeedbackButtonPressed(ConfigChanged event)
+	private void handleFeedbackButton(ConfigChanged event)
 	{
-		if (!NexLeechUtilityConfig.GROUP.equals(event.getGroup()) || event.getNewValue() == null)
+		if (event.getNewValue() == null)
 		{
 			return;
 		}

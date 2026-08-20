@@ -6,18 +6,13 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Notification;
 import net.runelite.client.config.Range;
 
 @ConfigGroup(NexLeechUtilityConfig.GROUP)
 public interface NexLeechUtilityConfig extends Config
 {
 	String GROUP = "nexleechutility";
-
-	enum FocusMode
-	{
-		REQUEST,
-		FORCE
-	}
 
 	enum RayDirections
 	{
@@ -41,7 +36,7 @@ public interface NexLeechUtilityConfig extends Config
 
 	@ConfigSection(
 		name = "Attack alert",
-		description = "Alert once your target minion becomes attackable, and optionally grab focus shortly before",
+		description = "Alert once your target minion becomes attackable, and optionally notify shortly before",
 		position = 2
 	)
 	String warningSection = "warning";
@@ -140,7 +135,7 @@ public interface NexLeechUtilityConfig extends Config
 	@ConfigItem(
 		keyName = "startingMinion",
 		name = "Starting minion",
-		description = "The minion you begin your leech rotation on. Warnings/focus apply to this minion and any after it until you reach 25 damage.",
+		description = "The minion you begin your leech rotation on. Warnings/notifications apply to this minion and any after it until you reach 25 damage.",
 		section = minionSection,
 		position = 2
 	)
@@ -202,53 +197,41 @@ public interface NexLeechUtilityConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "requestFocusOnWarning",
-		name = "Grab focus on warning",
-		description = "Bring the client window to the front before your target minion becomes attackable.",
+		keyName = "attackNotification",
+		name = "Notify before attackable",
+		description = "Notify before your target minion becomes attackable. Customize it to request or force focus.",
 		section = warningSection,
 		position = 3
 	)
-	default boolean requestFocusOnWarning()
+	default Notification attackNotification()
 	{
-		return false;
+		return Notification.OFF;
 	}
 
 	@ConfigItem(
-		keyName = "focusLeadSeconds",
-		name = "Focus lead (seconds)",
-		description = "Grab focus this many seconds before the minion is estimated to become attackable. "
-			+ "0 = at the estimated moment; a high value grabs focus as soon as the warning appears. "
-			+ "If it becomes attackable sooner, focus is grabbed then regardless.",
+		keyName = "notifyLeadSeconds",
+		name = "Notify lead (seconds)",
+		description = "Notify this many seconds before the minion is estimated to become attackable. "
+			+ "0 = at the estimated moment; a high value notifies as soon as the warning appears. "
+			+ "If it becomes attackable sooner, the notification fires then regardless.",
 		section = warningSection,
 		position = 4
 	)
-	default int focusLeadSeconds()
+	default int notifyLeadSeconds()
 	{
 		return 2;
 	}
 
 	@ConfigItem(
-		keyName = "focusOnKillEnd",
-		name = "Grab focus on kill end",
-		description = "Bring the client window to the front when Nex dies and loot drops, so you can grab it.",
+		keyName = "killEndNotification",
+		name = "Notify on kill end",
+		description = "Notify when Nex dies and loot drops, so you can grab it.",
 		section = warningSection,
 		position = 5
 	)
-	default boolean focusOnKillEnd()
+	default Notification killEndNotification()
 	{
-		return false;
-	}
-
-	@ConfigItem(
-		keyName = "focusMode",
-		name = "Focus mode",
-		description = "Applies to both focus grabs. REQUEST politely asks for attention (dock bounce); FORCE raises the window.",
-		section = warningSection,
-		position = 6
-	)
-	default FocusMode focusMode()
-	{
-		return FocusMode.FORCE;
+		return Notification.OFF;
 	}
 
 	// ===== Low stat alerts =====
